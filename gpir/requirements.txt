@@ -1,8 +1,0 @@
-transforms3d
-pygame
-pexpect
-simple-pid
-networkx
-empy
-opencv-python
-rospkg

@@ -16,6 +16,7 @@
 
 namespace planning {
 
+//通过高斯过程生成无碰撞路径
 class GPPlanner : public Planner {
  public:
   GPPlanner() = default;

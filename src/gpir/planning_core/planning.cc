@@ -11,17 +11,17 @@ int main(int argc, char *argv[]) {
   ros::init(argc, argv, "planning");
   ros::NodeHandle node;
 
-  google::InstallFailureSignalHandler();
-  google::InitGoogleLogging(argv[0]);
+  google::InstallFailureSignalHandler();//用于捕获程序中的失败信号
+  google::InitGoogleLogging(argv[0]); //用于初始化 Google 的日志系统
   google::SetStderrLogging(google::INFO);
   // FLAGS_log_prefix = false
   FLAGS_colorlogtostderr = true;
 
-  planning::PlanningCore planning_core;
+  planning::PlanningCore planning_core; //初始化PlanningCore对象
   planning_core.Init();
 
   ros::Timer main_loop = node.createTimer(
-      ros::Duration(0.05), &planning::PlanningCore::Run, &planning_core);
+      ros::Duration(0.05), &planning::PlanningCore::Run, &planning_core); //规划频率 20Hz
 
   ros::MultiThreadedSpinner spinner(4);
   spinner.spin();

@@ -17,6 +17,7 @@
 
 namespace planning {
 
+//Init() 函数初始化整个规划模块
 void PlanningCore::Init() {
   ros::NodeHandle node("~");
 
@@ -48,8 +49,8 @@ void PlanningCore::Init() {
   navigation_map_.Init();
   data_frame_ = std::make_shared<DataFrame>();
   route_target_sub_ = node.subscribe("/move_base_simple/goal", 10,
-                                     &PlanningCore::NewRouteCallBack, this);
-  joy_sub_ = node.subscribe("/joy", 10, &PlanningCore::JoyCallBack, this);
+                                     &PlanningCore::NewRouteCallBack, this); // 
+  joy_sub_ = node.subscribe("/joy", 10, &PlanningCore::JoyCallBack, this); //从keyboard节点发布的话题
 
   // init predictor
   mock_predictor_ = std::make_unique<ConstVelPredictor>(6, 0.2);
@@ -60,7 +61,9 @@ void PlanningCore::Init() {
   planner_->Init();
 }
 
+//Run函数是规划系统的主循环部分，被定时器周期性调用来更新路径规划
 void PlanningCore::Run(const ros::TimerEvent&) {
+  //每次运行时，首先调用 UpdateDataFrame() 函数获取最新的车辆状态和环境信息
   if (!UpdateDataFrame()) {
     LOG_EVERY_N(ERROR, 20) << "update data frame failed, give up planning";
     return;

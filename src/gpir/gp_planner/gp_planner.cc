@@ -29,7 +29,7 @@ void GPPlanner::Init() {
   target_lane_pub_ = node.advertise<visualization_msgs::MarkerArray>(
       "/behavior_target_lane", 1);
 
-  vehicle_param_ = VehicleInfo::Instance().vehicle_param();
+  vehicle_param_ = VehicleInfo::Instance().vehicle_param(); //初始化车辆参数
 }
 
 void GPPlanner::PlanOnce(NavigationMap* navigation_map_) {
@@ -40,12 +40,15 @@ void GPPlanner::PlanOnce(NavigationMap* navigation_map_) {
   reference_speed_ = navigation_map_->reference_speed();
 
   std::vector<std::pair<hdmap::LaneSegmentBehavior, common::Trajectory>>
-      trajectory_candidate;
+      trajectory_candidate; //用于存储可能的候选轨迹
 
+  //遍历所有的参考线，调用 PlanWithGPIR() 方法进行路径规划。
+  //如果规划成功，将生成的轨迹存储到 trajectory_candidate 中，否则记录日志
   int count = 0;
   for (const auto& reference_line : reference_lines) {
     trajectory_index_ = count;
     common::Trajectory trajectroy;
+    //PlanOnce() 调用 PlanWithGPIR() 来进行实际的路径规划。
     if (!PlanWithGPIR(ego_state, reference_line, obstacles, virtual_obstacles,
                       navigation_map_->trajectory(), &trajectroy)) {
       LOG(ERROR) << "[Plan]: planning for "
@@ -57,6 +60,7 @@ void GPPlanner::PlanOnce(NavigationMap* navigation_map_) {
     ++count;
   }
 
+  //选择最优轨迹：如果有有效的候选轨迹，则选择第一条轨迹作为最终的输出，并更新车辆的车道保持状态 (SetPlannerLCFeedback())。否则记录日志并清空轨迹
   if (!trajectory_candidate.empty()) {
     *navigation_map_->mutable_trajectory() =
         trajectory_candidate.front().second;
@@ -78,11 +82,13 @@ bool GPPlanner::ProcessObstacles(const std::vector<Obstacle>& raw_obstacles,
                                  const ReferenceLine& reference_line,
                                  std::vector<Obstacle>* cirtical_obstacles) {
   cirtical_obstacles->clear();
+  //ego_box_：使用车辆的参数和状态信息创建 ego_box_，即当前车辆的 2D 边界框，用于进行碰撞检测​(gp_planner)。
   ego_box_ = common::Box2D(state_.position, vehicle_param_.length,
                            vehicle_param_.width, state_.heading,
                            vehicle_param_.height);
   const auto& ref_lane_list = reference_line.lane_id_list();
 
+  //遍历所有障碍物，判断与车辆边界的重叠情况，如果发生重叠则记录碰撞信息。然后，通过参考线的位置，进一步判断障碍物是否处于规划的范围内（ROI）
   for (const auto& obstacle : raw_obstacles) {
     if (ego_box_.HasOverlapWith(obstacle.BoundingBox())) {
       LOG(ERROR) << "collision detected!";
@@ -114,30 +120,36 @@ bool GPPlanner::PlanWithGPIR(
     const std::vector<Obstacle>& dynamic_agents,
     const std::vector<Eigen::Vector2d>& virtual_obstacles,
     const common::Trajectory& last_trajectory, common::Trajectory* trajectory) {
-  common::Timer timer;
+  common::Timer timer; //用于跟踪函数中各部分的运行时间
   time_consuption_ = TimeConsumption();
 
-  const double length = reference_line.length();
+  const double length = reference_line.length();//获取参考线的长度
 
+  //调用障碍物处理函数，将动态障碍物分类为关键障碍物（可能影响车辆行驶）和非关键障碍物
   std::vector<Obstacle> cirtical_agents;
   ProcessObstacles(dynamic_agents, reference_line, &cirtical_agents);
 
   timer.Start();
+  //创建占据图（占据网格）用于表示路径周围的可行区域。该网格的大小由参考线长度及其横向边界来决定，每个网格单元的大小为 0.1m x 0.1m。
   OccupancyMap occupancy_map({0, -5}, {std::ceil(length / 0.1) + 100, 100},
                              {0.1, 0.1});
 
+  //处理虚拟障碍物：遍历虚拟障碍物，将它们投影到参考线中，并在占据图中填充这些障碍物位置，生成障碍物提示位置。
   std::vector<double> obstacle_location_hint;
   for (const auto& point : virtual_obstacles) {
     auto proj = reference_line.GetProjection(point);
     occupancy_map.FillCircle(Eigen::Vector2d(proj.s, proj.d), 0.2);
     obstacle_location_hint.emplace_back(proj.s);
   }
+  //SignedDistanceField2D：使用占据图构建一个签名距离场 (SDF)，SDF 用于路径生成中的距离约束。UpdateSDF() 计算并更新距离场。
   auto sdf = std::make_shared<SignedDistanceField2D>(std::move(occupancy_map));
   sdf->UpdateSDF();
   time_consuption_.sdf = timer.EndThenReset();
 
+  //将当前车辆状态从 Cartesian 坐标转换为 Frenet 坐标系
   common::FrenetState frenet_state;
   reference_line.ToFrenetState(ego_state, &frenet_state);
+  //基于历史轨迹的状态修正：如果上一次的轨迹存在且与当前状态相匹配，将上一时刻的状态应用到当前状态，以实现平滑的轨迹过渡
   if (!last_trajectory.empty()) {
     auto last_state = last_trajectory.GetNearestState(ego_state.position);
     if (std::fabs(last_state.frenet_d[0] - frenet_state.d[0]) < 1.0) {
@@ -147,6 +159,10 @@ bool GPPlanner::PlanWithGPIR(
     }
   }
 
+  //创建增量路径规划器，并生成初始路径。
+  //路径生成基于高斯过程，目标是在考虑障碍物和距离场的情况下，生成一条无碰撞且符合曲率约束的路径。
+  //GPPath类：用于存储路径节点并通过插值器生成平滑路径，是高斯过程路径的表示形式。
+  //GPIncrementalPathPlanner类：用于路径生成和增量优化。它使用高斯过程生成初始路径，并在环境变化时进行增量优化，保证路径的无碰撞性和平滑性。
   GPPath gp_path;
   GPIncrementalPathPlanner gp_path_planner(sdf);
   if (!gp_path_planner.GenerateInitialGPPath(reference_line, frenet_state, 100,
@@ -157,21 +173,26 @@ bool GPPlanner::PlanWithGPIR(
   }
   time_consuption_.init_path = timer.EndThenReset();
 
+  //StGraph 和速度规划：将车辆状态重新投影到 Frenet 坐标系中，创建 StGraph 对象。
   reference_line.ToFrenetState(ego_state, &frenet_state);
   StGraph st_graph(frenet_state.s);
   st_graph.SetReferenceSpeed(reference_speed_);
-  st_graph.BuildStGraph(cirtical_agents, gp_path);
+  st_graph.BuildStGraph(cirtical_agents, gp_path); //构建 ST 图
   if (!st_graph.SearchWithLocalTruncation(13, nullptr)) {
-    LOG(ERROR) << "[StGraph]: fail to find initial speed profile";
+    LOG(ERROR) << "[StGraph]: fail to find initial speed profile"; //在 ST 图中进行搜索，找到初步的速度曲线。
     return false;
   }
 
+  //在 ST 图中为 gp_path 生成速度曲线
   if (!st_graph.GenerateInitialSpeedProfile(gp_path)) {
     LOG(ERROR) << "[StGraph]: fail to optimize inital speed profile";
     return false;
   }
   time_consuption_.init_st = timer.EndThenReset();
 
+  //增量优化
+  //IsTrajectoryFeasible()检查生成的轨迹是否满足所有约束，包括无碰撞、符合曲率约束
+  //使用 UpdateGPPath() 方法进行增量路径优化。如果发现轨迹不可行，则进行迭代调整，直到达到最大迭代次数 (max_iter) 或轨迹可行。
   int iter_count = 0;
   vector_Eigen3d invalid_lat_frenet_s;
   while (trajectory_index_ < 1 &&
@@ -190,7 +211,7 @@ bool GPPlanner::PlanWithGPIR(
   if (iter_count != 0) {
     time_consuption_.refinement = timer.EndThenReset();
   }
-  st_graph.GenerateTrajectory(reference_line, gp_path, trajectory);
+  st_graph.GenerateTrajectory(reference_line, gp_path, trajectory);//调用 GenerateTrajectory() 方法基于路径和速度曲线生成最终的轨迹。
 
   VisualizeCriticalObstacle(cirtical_agents);
   return true;

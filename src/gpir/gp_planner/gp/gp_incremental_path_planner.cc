@@ -28,7 +28,7 @@ using common::NormalizeAngle;
 using gtsam::Vector3;
 using gtsam::noiseModel::Diagonal;
 using gtsam::noiseModel::Isotropic;
-using PriorFactor3 = gtsam::PriorFactor<Vector3>;
+using PriorFactor3 = gtsam::PriorFactor<Vector3>;  //先验因子，用于约束路径节点
 
 constexpr double kEpsilon = 1.6;
 constexpr double kQc = 0.1;
@@ -135,55 +135,64 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
     const ReferenceLine& reference_line,
     const common::FrenetState& initial_state, const double length,
     const std::vector<double>& obstacle_location_hint, GPPath* gp_path) {
-  TIC;
-  static auto sigma_initial = Isotropic::Sigma(3, 0.001);
-  static auto sigma_goal = Diagonal::Sigmas(Vector3(1, 0.1, 0.1));
-  static auto sigma_reference = Diagonal::Sigmas(Vector3(30, 1e9, 1e9));
+  TIC; //用于计时以计算函数执行时间
+  static auto sigma_initial = Isotropic::Sigma(3, 0.001); //初始节点的噪声模型，表示路径初始点对轨迹的约束程度。
+  static auto sigma_goal = Diagonal::Sigmas(Vector3(1, 0.1, 0.1)); //目标节点的噪声模型，表示目标点的约束。
+  static auto sigma_reference = Diagonal::Sigmas(Vector3(30, 1e9, 1e9)); //参考路径噪声模型，用于限制路径的偏离程度。
 
-  interval_ = length / (num_of_nodes_ - 1);
-
+  interval_ = length / (num_of_nodes_ - 1); //路径节点之间的间隔长度，路径被离散为多个节点，方便进行优化。
+ 
+  //清空因子图 (graph_) 和节点位置 (node_locations_)：为生成新的路径做准备。
   if (!graph_.empty()) {
     graph_.resize(0);
     node_locations_.clear();
   }
+  
+  //初始化路径节点
+  Vector3 x0 = initial_state.d; //初始横向位置，用于表示起始节点的状态。
+  Vector3 xn(0, 0, 0); //目标状态，初始化为 (0, 0, 0)，表示目标点位置和速度为 0。
+  Vector3 x_ref(0, 0, 0); //参考状态，用于路径参考线约束。
 
-  Vector3 x0 = initial_state.d;
-  Vector3 xn(0, 0, 0);
-  Vector3 x_ref(0, 0, 0);
-
-  double start_s = initial_state.s[0];
-
-  const int interpolate_num = 10;
-  const double tau = interval_ / (interpolate_num + 1);
+  double start_s = initial_state.s[0]; //起点的纵向坐标。
+  
+  //设置插值和初始化节点
+  const int interpolate_num = 10; //每个节点之间插值的数量，用于细化路径。
+  const double tau = interval_ / (interpolate_num + 1); //插值间隔，用于定义路径节点之间的小步长。
 
   graph_.reserve(num_of_nodes_);
-  double kappa_r = 0.0, dkappa_r = 0.0, current_s = 0.0;
+  double kappa_r = 0.0, dkappa_r = 0.0, current_s = 0.0; //路径曲率和曲率变化率，初始化为 0，用于路径曲率约束。
+  
+  //构建因子图
   for (int i = 0; i < num_of_nodes_; ++i) {
-    current_s = start_s + i * interval_;
-    node_locations_.emplace_back(current_s);
+    current_s = start_s + i * interval_; //当前节点的纵向坐标
+    node_locations_.emplace_back(current_s); //存储节点位置，用于后续路径规划。
 
-    gtsam::Key key = gtsam::Symbol('x', i);
+    gtsam::Key key = gtsam::Symbol('x', i); //每个节点的标识符，用于因子图中标识节点。
+    //起始和目标节点约束 (PriorFactor3)
+    //对起点和终点添加约束，起点用 x0 作为约束，目标点用 xn 作为约束
     if (i == 0) graph_.add(PriorFactor3(key, x0, sigma_initial));
     if (i == num_of_nodes_ - 1) graph_.add(PriorFactor3(key, xn, sigma_goal));
+    //构建节点之间的关系：
     if (i > 0) {
       gtsam::Key last_key = gtsam::Symbol('x', i - 1);
       reference_line.GetCurvature(current_s, &kappa_r, &dkappa_r);
 
-      graph_.add(GPPriorFactor(last_key, key, interval_, kQc));
+      graph_.add(GPPriorFactor(last_key, key, interval_, kQc));//GPPriorFactor：在当前节点和上一个节点之间添加先验因子，以限制路径的平滑性
 
       // if (current_s > 0) {
       //   graph_.add(PriorFactor3(key, x_ref, sigma_reference));
       // }
       if (current_s > initial_state.s[1] * 3) {
-        graph_.add(PriorFactor3(key, x_ref, sigma_reference));
+        graph_.add(PriorFactor3(key, x_ref, sigma_reference));//sigma_reference 约束：当路径距离足够远时，添加参考路径约束。
       }
       graph_.add(
-          GPObstacleFactor(key, sdf_, 0.1, kEpsilon, current_s, kappa_r));
+          GPObstacleFactor(key, sdf_, 0.1, kEpsilon, current_s, kappa_r)); //GPObstacleFactor：为每个节点添加障碍物因子，用于确保路径远离障碍物。
       if (enable_curvature_constraint_) {
         graph_.add(GPKappaLimitFactor(key, 0.01, kappa_r, dkappa_r,
-                                      kappa_limit_, current_s));
+                                      kappa_limit_, current_s)); //曲率限制因子 (GPKappaLimitFactor)：添加曲率限制因子，确保路径的曲率不超过车辆的物理限制。
       }
-
+      
+      //插值障碍物因子 (GPInterpolateObstacleFactor) 和 插值曲率限制因子 (GPInterpolateKappaLimitFactor)：在节点之间进行插值，确保路径的每个插值点满足障碍物和曲率限制。
       for (int j = 0; j < interpolate_num; ++j) {
         graph_.add(GPInterpolateObstacleFactor(
             last_key, key, sdf_, 0.1, kEpsilon, start_s + interval_ * (i - 1),
@@ -197,20 +206,21 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
     }
   }
 
-  std::vector<double> lb, ub;
+  //设置路径边界
+  std::vector<double> lb, ub; //lb 和 ub：用于存储路径的上下边界。
   double init_kappa = reference_line.GetCurvature(initial_state.s[0]);
   double init_angle =
       std::atan2(initial_state.d[1], 1 - init_kappa * initial_state.d[0]);
   std::vector<std::vector<std::pair<double, double>>> boundaries;
   sdf_->mutable_occupancy_map()->SearchForVerticalBoundaries(
-      obstacle_location_hint, &boundaries);
+      obstacle_location_hint, &boundaries); //SearchForVerticalBoundaries()：从占据图中查找障碍物的边界。
   DecideInitialPathBoundary(
       Eigen::Vector2d(initial_state.s[0], initial_state.d[0]), init_angle,
-      obstacle_location_hint, boundaries, &lb, &ub);
+      obstacle_location_hint, boundaries, &lb, &ub); //调用方法确定路径的边界，使路径在物理上可行。
 
-  GPInitializer initializer;
-  vector_Eigen3d initial_path;
-
+  GPInitializer initializer; //GPInitializer：初始化器用于生成初始路径。
+  vector_Eigen3d initial_path; 
+  //GenerateInitialPath()：调用该函数生成初始路径，如果失败则记录错误并返回 false。
   if (!initializer.GenerateInitialPath(x0, xn, node_locations_,
                                        obstacle_location_hint, lb, ub,
                                        &initial_path)) {
@@ -218,13 +228,15 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
     return false;
   }
 
+  //gtsam::Values：用于存储初始路径节点的优化初始值。
   gtsam::Values init_values;
   for (int i = 0; i < node_locations_.size(); ++i) {
     gtsam::Key key = gtsam::symbol('x', i);
-    init_values.insert<gtsam::Vector3>(key, initial_path[i]);
+    init_values.insert<gtsam::Vector3>(key, initial_path[i]);//init_values.insert()：将初始路径中的节点插入到优化器的初始值中。
   }
 
-  gtsam::LevenbergMarquardtParams param;
+  //优化路径
+  gtsam::LevenbergMarquardtParams param; //定义优化器的参数，例如初始 lambda 值和最大迭代次数。
   param.setlambdaInitial(100.0);
   param.setMaxIterations(50);
   // param.setAbsoluteErrorTol(5e-4);
@@ -232,23 +244,25 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
   // param.setErrorTol(1.0);
   // param.setVerbosity("ERROR");
 
-  gtsam::LevenbergMarquardtOptimizer opt(graph_, init_values, param);
-  map_result_ = opt.optimize();
+  gtsam::LevenbergMarquardtOptimizer opt(graph_, init_values, param); //创建优化器对象，并传入因子图和初始值。
+  map_result_ = opt.optimize(); //执行优化，获取优化后的路径节点。
 
+  //构建最终路径
   *gp_path =
-      GPPath(num_of_nodes_, start_s, interval_, length, kQc, &reference_line);
-  auto gp_path_nodes = gp_path->mutable_nodes();
+      GPPath(num_of_nodes_, start_s, interval_, length, kQc, &reference_line); //构建 GPPath：用优化结果创建 GPPath 对象
+  auto gp_path_nodes = gp_path->mutable_nodes(); //mutable_nodes()：获取路径节点的可修改引用。
   for (size_t i = 0; i < map_result_.size(); ++i) {
     gp_path_nodes->emplace_back(
-        map_result_.at<gtsam::Vector3>(gtsam::Symbol('x', i)));
+        map_result_.at<gtsam::Vector3>(gtsam::Symbol('x', i))); //emplace_back()：将优化后的节点值插入路径中。
   }
-  TOC("GP path Generation");
-
+  TOC("GP path Generation"); //TOC("GP path Generation")：停止计时并记录生成时间。
+  
+  //增量优化设置
   if (enable_incremental_refinemnt_) {
     // init isam2
     isam2_ = gtsam::ISAM2(
-        gtsam::ISAM2Params(gtsam::ISAM2GaussNewtonParams(), 1e-3, 1));
-    isam2_.update(graph_, map_result_);
+        gtsam::ISAM2Params(gtsam::ISAM2GaussNewtonParams(), 1e-3, 1)); //enable_incremental_refinemnt_：如果启用增量优化，则初始化 ISAM2 对象。
+    isam2_.update(graph_, map_result_); //将初始的因子图和优化结果传入增量优化器，方便后续的增量更新。
     // map_result_ = isam2_.calculateEstimate();
   }
 

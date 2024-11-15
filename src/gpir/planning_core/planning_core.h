@@ -46,12 +46,12 @@ class PlanningCore {
   ros::Subscriber joy_sub_;
   int suggest_lane_change_ = 0;
 
-  NavigationMap navigation_map_;
-  std::shared_ptr<DataFrame> data_frame_;
+  NavigationMap navigation_map_; //导航地图
+  std::shared_ptr<DataFrame> data_frame_; //数据帧
   std::unique_ptr<simulation::SimulatorAdapter> simulator_;
 
-  std::unique_ptr<Planner> planner_;
-  std::unique_ptr<MockPredictor> mock_predictor_;
+  std::unique_ptr<Planner> planner_; //规划器对象
+  std::unique_ptr<MockPredictor> mock_predictor_; //轨迹预测对象
 };
 
 }  // namespace planning

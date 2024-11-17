@@ -136,10 +136,13 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
     const common::FrenetState& initial_state, const double length,
     const std::vector<double>& obstacle_location_hint, GPPath* gp_path) {
   TIC; //用于计时以计算函数执行时间
-  static auto sigma_initial = Isotropic::Sigma(3, 0.001); //初始节点的噪声模型，表示路径初始点对轨迹的约束程度。
-  static auto sigma_goal = Diagonal::Sigmas(Vector3(1, 0.1, 0.1)); //目标节点的噪声模型，表示目标点的约束。
-  static auto sigma_reference = Diagonal::Sigmas(Vector3(30, 1e9, 1e9)); //参考路径噪声模型，用于限制路径的偏离程度。
+  //噪声模型
+  //噪声模型 (sigma_initial, sigma_goal, sigma_reference) 用于描述路径的不同部分的约束程度
+  static auto sigma_initial = Isotropic::Sigma(3, 0.001); //代表起点的约束，通过较小的噪声值来强制路径在起点处具有确定性。
+  static auto sigma_goal = Diagonal::Sigmas(Vector3(1, 0.1, 0.1)); //用于终点约束，确保车辆能够平稳地到达目标点。
+  static auto sigma_reference = Diagonal::Sigmas(Vector3(30, 1e9, 1e9)); //限制路径不能过度偏离参考线，确保路径符合车辆的目标行驶方向。
 
+  /* 1.路径离散化 */
   interval_ = length / (num_of_nodes_ - 1); //路径节点之间的间隔长度，路径被离散为多个节点，方便进行优化。
  
   //清空因子图 (graph_) 和节点位置 (node_locations_)：为生成新的路径做准备。
@@ -162,22 +165,23 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
   graph_.reserve(num_of_nodes_);
   double kappa_r = 0.0, dkappa_r = 0.0, current_s = 0.0; //路径曲率和曲率变化率，初始化为 0，用于路径曲率约束。
   
-  //构建因子图
+  /* 2.构建因子图 */
+  // 因子图是一种表示变量之间依赖关系的图模型，用于建模路径节点之间的各种约束条件。
   for (int i = 0; i < num_of_nodes_; ++i) {
     current_s = start_s + i * interval_; //当前节点的纵向坐标
     node_locations_.emplace_back(current_s); //存储节点位置，用于后续路径规划。
 
-    gtsam::Key key = gtsam::Symbol('x', i); //每个节点的标识符，用于因子图中标识节点。
-    //起始和目标节点约束 (PriorFactor3)
-    //对起点和终点添加约束，起点用 x0 作为约束，目标点用 xn 作为约束
-    if (i == 0) graph_.add(PriorFactor3(key, x0, sigma_initial));
+    // 每个离散节点对应于一个路径状态变量，包括车辆的横向位置、速度等。这些节点用 gtsam::Key 进行标识，便于构建因子图中的约束关系。
+    gtsam::Key key = gtsam::Symbol('x', i); 
+    //起始和目标节点约束 (先验因子PriorFactor3)
+    if (i == 0) graph_.add(PriorFactor3(key, x0, sigma_initial)); //先验因子 (PriorFactor3)：在路径的起点和终点添加先验因子，使得路径在这些点上具有明确的起始状态和目标状态。
     if (i == num_of_nodes_ - 1) graph_.add(PriorFactor3(key, xn, sigma_goal));
-    //构建节点之间的关系：
+  
     if (i > 0) {
       gtsam::Key last_key = gtsam::Symbol('x', i - 1);
       reference_line.GetCurvature(current_s, &kappa_r, &dkappa_r);
 
-      graph_.add(GPPriorFactor(last_key, key, interval_, kQc));//GPPriorFactor：在当前节点和上一个节点之间添加先验因子，以限制路径的平滑性
+      graph_.add(GPPriorFactor(last_key, key, interval_, kQc));//节点间先验 (GPPriorFactor)：用于保持路径的平滑性。相邻节点之间应保持合理的关系，防止路径出现不合理的急剧转弯或偏移。
 
       // if (current_s > 0) {
       //   graph_.add(PriorFactor3(key, x_ref, sigma_reference));
@@ -186,13 +190,15 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
         graph_.add(PriorFactor3(key, x_ref, sigma_reference));//sigma_reference 约束：当路径距离足够远时，添加参考路径约束。
       }
       graph_.add(
-          GPObstacleFactor(key, sdf_, 0.1, kEpsilon, current_s, kappa_r)); //GPObstacleFactor：为每个节点添加障碍物因子，用于确保路径远离障碍物。
+          GPObstacleFactor(key, sdf_, 0.1, kEpsilon, current_s, kappa_r)); //障碍物因子 (GPObstacleFactor)：障碍物因子用于确保路径避开环境中的障碍物。通过距离场 (SDF) 来判断节点是否距离障碍物太近，并在因子图中施加相应的约束，避免路径节点落入障碍物的范围内。
       if (enable_curvature_constraint_) {
         graph_.add(GPKappaLimitFactor(key, 0.01, kappa_r, dkappa_r,
-                                      kappa_limit_, current_s)); //曲率限制因子 (GPKappaLimitFactor)：添加曲率限制因子，确保路径的曲率不超过车辆的物理限制。
+                                      kappa_limit_, current_s)); //曲率限制因子 (GPKappaLimitFactor)：车辆的运动需要满足曲率限制，避免由于转弯半径过小而导致车辆无法平稳行驶。曲率限制因子将车辆的物理转弯能力限制引入因子图中。
       }
       
-      //插值障碍物因子 (GPInterpolateObstacleFactor) 和 插值曲率限制因子 (GPInterpolateKappaLimitFactor)：在节点之间进行插值，确保路径的每个插值点满足障碍物和曲率限制。
+      //插值因子
+      //  在节点之间的插值阶段，也需要保证路径的每个插值点满足障碍物避让和曲率限制。
+      //   GPInterpolateObstacleFactor 和 GPInterpolateKappaLimitFactor 用于插值点之间的约束，以保证即使在节点之间的插值阶段，路径也能满足约束条件。
       for (int j = 0; j < interpolate_num; ++j) {
         graph_.add(GPInterpolateObstacleFactor(
             last_key, key, sdf_, 0.1, kEpsilon, start_s + interval_ * (i - 1),
@@ -205,6 +211,11 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
       }
     }
   }
+ 
+  /* 3.非线性优化 */ 
+  //  目标是找到一条路径，使得所有节点和插值点都能满足路径的平滑性、曲率限制和障碍物避让等要求
+  //  这种问题通常是非线性的，因为路径的平滑性和曲率限制涉及到车辆的位置、角度、曲率等非线性关系。
+
 
   //设置路径边界
   std::vector<double> lb, ub; //lb 和 ub：用于存储路径的上下边界。
@@ -214,13 +225,15 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
   std::vector<std::vector<std::pair<double, double>>> boundaries;
   sdf_->mutable_occupancy_map()->SearchForVerticalBoundaries(
       obstacle_location_hint, &boundaries); //SearchForVerticalBoundaries()：从占据图中查找障碍物的边界。
+  //  通过 DecideInitialPathBoundary() 来确定路径的边界 (lb, ub)，为路径在障碍物间寻找合理的行驶区域。
+  //  这些边界基于距离场计算得出，确保路径在物理上可行。
   DecideInitialPathBoundary(
       Eigen::Vector2d(initial_state.s[0], initial_state.d[0]), init_angle,
-      obstacle_location_hint, boundaries, &lb, &ub); //调用方法确定路径的边界，使路径在物理上可行。
-
+      obstacle_location_hint, boundaries, &lb, &ub);
+  
+  //   初始值设置：首先使用 GPInitializer 生成初始路径，这是一条尽量符合边界和障碍物的可行路径。
   GPInitializer initializer; //GPInitializer：初始化器用于生成初始路径。
   vector_Eigen3d initial_path; 
-  //GenerateInitialPath()：调用该函数生成初始路径，如果失败则记录错误并返回 false。
   if (!initializer.GenerateInitialPath(x0, xn, node_locations_,
                                        obstacle_location_hint, lb, ub,
                                        &initial_path)) {
@@ -235,15 +248,16 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
     init_values.insert<gtsam::Vector3>(key, initial_path[i]);//init_values.insert()：将初始路径中的节点插入到优化器的初始值中。
   }
 
-  //优化路径
-  gtsam::LevenbergMarquardtParams param; //定义优化器的参数，例如初始 lambda 值和最大迭代次数。
+  // 定义优化参数：设置初始步长 (lambdaInitial) 和最大迭代次数 (setMaxIterations) 等参数来控制优化过程。
+  gtsam::LevenbergMarquardtParams param; 
   param.setlambdaInitial(100.0);
   param.setMaxIterations(50);
   // param.setAbsoluteErrorTol(5e-4);
   // param.setRelativeErrorTol(0.01);
   // param.setErrorTol(1.0);
   // param.setVerbosity("ERROR");
-
+  
+  // 执行优化：利用 Levenberg-Marquardt 优化器对因子图进行求解，获取优化后的路径节点。
   gtsam::LevenbergMarquardtOptimizer opt(graph_, init_values, param); //创建优化器对象，并传入因子图和初始值。
   map_result_ = opt.optimize(); //执行优化，获取优化后的路径节点。
 
@@ -257,7 +271,10 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
   }
   TOC("GP path Generation"); //TOC("GP path Generation")：停止计时并记录生成时间。
   
-  //增量优化设置
+   
+  /* 4.增量优化 */ 
+  // 在自动驾驶场景中，环境是动态的，障碍物、交通参与者等随时可能改变其位置和行为。因此，路径规划需要具备实时性和灵活性，能够快速响应环境的变化。
+  // ISAM2 (Incremental Smoothing and Mapping) 是一种增量优化方法，可以在环境变化时对路径进行实时更新，而不需要完全重新计算整个路径。
   if (enable_incremental_refinemnt_) {
     // init isam2
     isam2_ = gtsam::ISAM2(

@@ -32,15 +32,15 @@ class GPObstacleFactor : public gtsam::NoiseModelFactor1<gtsam::Vector3> {
                                      const double l) const;
 
  private:
-  double epsilon_ = 0.0;
-  double param_ = 0.0;
+  double epsilon_ = 0.0; // 控制障碍物避让程度的参数
+  double param_ = 0.0;   // 当前节点位置参数
 
-  double kappa_r_ = 0.0;
-  double ls_ = 3.0;
+  double kappa_r_ = 0.0; // 参考曲率
+  double ls_ = 3.0;      // 用于计算障碍物检查点的距离参数
 
   mutable double cos_theta_ = 0.0;
   mutable double sin_theta_ = 0.0;
 
-  std::shared_ptr<SignedDistanceField2D> sdf_;
+  std::shared_ptr<SignedDistanceField2D> sdf_; //提供距离障碍物的距离信息
 };
 }  // namespace planning

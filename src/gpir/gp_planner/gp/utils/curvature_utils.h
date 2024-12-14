@@ -13,6 +13,7 @@ namespace planning {
 
 class CurvatureUtils {
  public:
+ //GetKappaAndJacobian 函数用于计算曲率及其雅可比矩阵。它的输入是节点的状态 d（即路径的横向位置、速度和加速度），参考曲率 kappa_r 和曲率变化率 dkappa_r。
   static double GetKappaAndJacobian(
       const gtsam::Vector3& d, const double kappa_r, const double dkappa_r,
       gtsam::OptionalJacobian<Eigen::Dynamic, Eigen::Dynamic> H = boost::none) {
@@ -24,7 +25,7 @@ class CurvatureUtils {
     const double sin_theta = std::sin(theta);
     const double cos_theta = std::cos(theta);
     const double cos_theta_sqr = cos_theta * cos_theta;
-
+   //论文公式 （21）
     const double kappa =
         ((d(2) - (dkappa_r * d(0) + kappa_r * d(1)) * tan_theta) *
              cos_theta_sqr * one_minus_kappar_d_inv +

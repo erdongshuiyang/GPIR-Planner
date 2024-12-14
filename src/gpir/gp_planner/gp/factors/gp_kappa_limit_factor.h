@@ -36,6 +36,6 @@ class GPKappaLimitFactor : public gtsam::NoiseModelFactor1<gtsam::Vector3> {
   double kappa_limit_ = 0.0;
   double s_ = 0.0;
 
-  PenaltyFunction penalty_;
+  PenaltyFunction penalty_; //用于计算曲率超出限制时的惩罚代价。
 };
 }  // namespace planning

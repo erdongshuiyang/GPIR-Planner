@@ -31,7 +31,7 @@ using gtsam::noiseModel::Isotropic;
 using PriorFactor3 = gtsam::PriorFactor<Vector3>;  //先验因子，用于约束路径节点
 
 constexpr double kEpsilon = 1.6;
-constexpr double kQc = 0.1;
+constexpr double kQc = 0.1; //噪声参数
 
 bool GPIncrementalPathPlanner::DecideInitialPathBoundary(
     const Eigen::Vector2d& init_pos, const double init_angle,
@@ -179,7 +179,7 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
   
     if (i > 0) {
       gtsam::Key last_key = gtsam::Symbol('x', i - 1);
-      reference_line.GetCurvature(current_s, &kappa_r, &dkappa_r);
+      reference_line.GetCurvature(current_s, &kappa_r, &dkappa_r); //表示参考线曲率
 
       graph_.add(GPPriorFactor(last_key, key, interval_, kQc));//节点间先验 (GPPriorFactor)：用于保持路径的平滑性。相邻节点之间应保持合理的关系，防止路径出现不合理的急剧转弯或偏移。
 

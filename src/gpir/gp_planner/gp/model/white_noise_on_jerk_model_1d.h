@@ -11,8 +11,16 @@
 #include <array>
 
 namespace planning {
+
+// 该类主要提供了高斯过程轨迹规划所需的几种矩阵：
+// WhiteNoiseOnJerkModel1D 类用于描述“加速度的导数（即 jerk，冲击）”的白噪声模型。
+// 该模型是一种用于描述路径状态在位置、速度、加速度之间动态关系的模型，它假设车辆的加速度是随时间变化的，并且其变化（jerk）受到过程噪声的影响。
+
 class WhiteNoiseOnJerkModel1D {
  public:
+
+  //Q 矩阵：过程噪声协方差矩阵，用于描述加速度导数（jerk）影响下路径的不确定性。
+  //见论文公式（35）
   static inline Eigen::Matrix3d Q(const double qc, const double tau) {
     Eigen::Matrix3d q;
     std::array<double, 5> tau_powers;
@@ -35,6 +43,8 @@ class WhiteNoiseOnJerkModel1D {
     return q;
   }
 
+  // Phi 矩阵：状态转移矩阵，描述了路径点之间的动态特性。
+  // 论文公式（34）
   static inline Eigen::Matrix3d Phi(const double tau) {
     Eigen::Matrix3d phi = Eigen::Matrix3d::Identity();
     phi(0, 1) = tau;
@@ -43,6 +53,9 @@ class WhiteNoiseOnJerkModel1D {
     return phi;
   }
 
+
+  //LambdaAndPsi 函数：用于描述状态变化的中间量，结合了不同时间点的状态信息
+  //这些矩阵用于描述节点之间的插值。对于高斯过程插值，Lambda 和 Psi 确保在相邻节点之间插入的点也符合相同的平滑性和障碍约束。
   static inline void LambdaAndPsi(const double qc, const double delta,
                                   const double tau, Eigen::Matrix3d* lambda,
                                   Eigen::Matrix3d* psi) {
@@ -50,6 +63,7 @@ class WhiteNoiseOnJerkModel1D {
     *lambda = Phi(tau) - (*psi) * Phi(delta);
   }
 
+  //QInverse 矩阵：过程噪声协方差矩阵的逆矩阵。
   static inline Eigen::Matrix3d QInverse(const double qc, const double tau) {
     Eigen::Matrix3d q_inv;
     std::array<double, 5> tau_powers;

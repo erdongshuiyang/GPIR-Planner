@@ -27,20 +27,20 @@ double GPUtils::HingeLoss(const gtsam::Vector2& point,
 double GPUtils::HingeLoss2(const gtsam::Vector2& point,
                            const SignedDistanceField2D& sdf, const double eps,
                            gtsam::OptionalJacobian<1, 2> H_point) {
-  gtsam::Vector2 grad;
-  const double signed_distance = sdf.SignedDistance(point, &grad);
-  double error = eps - signed_distance;
+  gtsam::Vector2 grad; //grad：梯度，用于记录障碍物距离函数在当前点上的方向变化。
+  const double signed_distance = sdf.SignedDistance(point, &grad);//通过调用 SignedDistance 函数计算当前节点与最近障碍物之间的距离
+  double error = eps - signed_distance;//计算出的误差值，用于衡量当前节点与障碍物的距离相对于阈值 eps 的差距。如果节点距离小于 eps，则 error 为正值，表示需要避开障碍物。
 
-  if (error < 0) {
-    if (H_point) *H_point = gtsam::Matrix12::Zero();
-    return 0.0;
-  } else if (0 < error && error <= eps) {
-    if (H_point) (*H_point) = -3 * error * error * grad.transpose();
-    return error * error * error;
-  } else if (error > eps) {
+  if (error < 0) { //当 error 为负值时，意味着 signed_distance > eps，即节点与障碍物之间的距离大于阈值，足够安全
+    if (H_point) *H_point = gtsam::Matrix12::Zero();//雅可比矩阵为零，因为不需要对节点施加任何影响。
+    return 0.0;//此时返回误差为 0.0，意味着当前节点不会因避障而增加代价
+  } else if (0 < error && error <= eps) { //当 error 在 0 到 eps 之间时，意味着当前节点离障碍物较近，需要增加代价来远离障碍物。
+    if (H_point) (*H_point) = -3 * error * error * grad.transpose(); //用于表示当前节点在沿梯度方向移动时对损失值的影响。负号是为了引导路径远离障碍物。
+    return error * error * error;//此时返回误差值为 error^3，即以三次方的形式增加代价。当距离障碍物越近，代价会急剧增加。
+  } else if (error > eps) { //当 error > eps 时，意味着路径节点距离障碍物非常近，甚至已经侵入了障碍物的空间
     if (H_point)
-      (*H_point) = -(6 * eps * error - 3 * eps * eps) * grad.transpose();
-    return 3 * eps * error * error - 3 * eps * eps * error + eps * eps * eps;
+      (*H_point) = -(6 * eps * error - 3 * eps * eps) * grad.transpose();//通过计算梯度来表示误差随节点位置变化的关系。
+    return 3 * eps * error * error - 3 * eps * eps * error + eps * eps * eps; //以三次函数的形式表示，确保在靠近障碍物的情况下，代价呈现出较高的增长速率，从而强制路径远离障碍物。
   }
 }
 

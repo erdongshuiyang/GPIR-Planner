@@ -30,6 +30,15 @@ void GPPlanner::Init() {
       "/behavior_target_lane", 1);
 
   vehicle_param_ = VehicleInfo::Instance().vehicle_param();
+
+  // 初始化数据收集器
+  // if (!PlanningDataCollector::Initialize()) {
+  //     LOG(ERROR) << "Failed to initialize data collector";
+  // }
+
+  path_data_pub_ = node.advertise<nav_msgs::Path>("/planning/path_data", 1);
+  curvature_data_pub_ = node.advertise<std_msgs::Float64MultiArray>("/planning/curvature_data", 1);
+
 }
 
 void GPPlanner::PlanOnce(NavigationMap* navigation_map_) {
@@ -114,6 +123,11 @@ bool GPPlanner::PlanWithGPIR(
     const std::vector<Obstacle>& dynamic_agents,
     const std::vector<Eigen::Vector2d>& virtual_obstacles,
     const common::Trajectory& last_trajectory, common::Trajectory* trajectory) {
+
+  // 创建数据收集器
+  // std::vector<PathPlanningData> all_planning_data;
+  // constexpr double kSampleInterval = 0.5;  // 采样间隔0.5米    
+
   common::Timer timer;
   time_consuption_ = TimeConsumption();
 
@@ -155,6 +169,15 @@ bool GPPlanner::PlanWithGPIR(
     LOG(ERROR) << "[GPPlanner]: fail to generate initla path";
     return false;
   }
+
+  PublishPlanningData(gp_path);  // 发布初始路径数据
+
+  // 在初始路径生成后收集第一组数据
+  // PathPlanningData initial_data;
+  // initial_data.iteration_count = 0;
+  // PlanningDataCollector::CollectPathData(gp_path, kSampleInterval, &initial_data);
+  // all_planning_data.push_back(initial_data);
+
   time_consuption_.init_path = timer.EndThenReset();
 
   reference_line.ToFrenetState(ego_state, &frenet_state);
@@ -182,6 +205,17 @@ bool GPPlanner::PlanWithGPIR(
     //                                            invalid_lat_frenet_s,
     //                                            &gp_path);
     // st_graph.UpdateSpeedProfile(gp_path);
+
+    // 在每次路径更新后收集数据
+    // PathPlanningData iter_data;
+    // iter_data.iteration_count = iter_count + 1;
+    // PlanningDataCollector::CollectPathData(gp_path, kSampleInterval, &iter_data);
+    // all_planning_data.push_back(iter_data);  
+
+    // 在每次路径更新后发布数据
+    PublishPlanningData(gp_path);  // 发布迭代优化后的路径数据
+
+
     if (iter_count++ == max_iter) {
       LOG(WARNING) << "[GPIR]: reach maximum iterations";
       break;
@@ -190,7 +224,19 @@ bool GPPlanner::PlanWithGPIR(
   if (iter_count != 0) {
     time_consuption_.refinement = timer.EndThenReset();
   }
+
+  // 在生成最终轨迹之前保存数据
+  // static int scenario_count = 0;
+  // std::string data_dir = "/home/erdong2004/GPIR_planner_ws/src/gpir/data";
+  // std::string filename = data_dir + "path_planning_data_" + 
+  //                       std::to_string(scenario_count++) + ".csv";
+  // 直接调用SaveToCSV，让类内部处理文件名生成
+  // PlanningDataCollector::SaveToCSV(all_planning_data);
+
   st_graph.GenerateTrajectory(reference_line, gp_path, trajectory);
+
+  // 在最终轨迹生成后发布一次数据
+  PublishPlanningData(gp_path);  // 发布最终路径数据
 
   VisualizeCriticalObstacle(cirtical_agents);
   return true;
@@ -337,6 +383,35 @@ void GPPlanner::VisualizeTargetLane(const ReferenceLine& reference_line) {
   markers.markers.push_back(marker);
 
   target_lane_pub_.publish(markers);
+}
+
+
+void GPPlanner::PublishPlanningData(const GPPath& path) {
+  // 发布路径数据
+  nav_msgs::Path path_msg;
+  path_msg.header.stamp = ros::Time::now();
+  path_msg.header.frame_id = "map";
+  
+  // 发布曲率数据
+  std_msgs::Float64MultiArray curv_msg;
+  
+  constexpr double kSampleInterval = 0.5;
+  for(double s = path.start_s(); s <= path.MaximumArcLength(); s += kSampleInterval) {
+      common::State state;
+      path.GetState(s, &state);
+      
+      // 添加路径点
+      geometry_msgs::PoseStamped pose;
+      pose.pose.position.x = state.position.x();
+      pose.pose.position.y = state.position.y();
+      path_msg.poses.push_back(pose);
+      
+      // 添加曲率值
+      curv_msg.data.push_back(path.GetCurvature(s));
+  }
+  
+  path_data_pub_.publish(path_msg);
+  curvature_data_pub_.publish(curv_msg);
 }
 
 }  // namespace planning

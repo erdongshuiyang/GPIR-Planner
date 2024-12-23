@@ -14,6 +14,12 @@
 #include "planning_core/planner/planner.h"
 #include "planning_core/planning_common/vehicle_info.h"
 
+#include "planning_core/planning_data_collector.h"
+
+#include <nav_msgs/Path.h>
+#include <std_msgs/Float64MultiArray.h>
+#include <geometry_msgs/PoseStamped.h>
+
 namespace planning {
 
 class GPPlanner : public Planner {
@@ -46,10 +52,16 @@ class GPPlanner : public Planner {
 
   void VisualizeTargetLane(const ReferenceLine& reference_line);
 
+
+  void PublishPlanningData(const GPPath& path);
+
  private:
   ros::Publisher trajectory_pub_;
   ros::Publisher critical_obstacle_pub_;
   ros::Publisher target_lane_pub_;
+
+  ros::Publisher path_data_pub_;
+  ros::Publisher curvature_data_pub_;
 
   common::State state_;
   common::Box2D ego_box_;

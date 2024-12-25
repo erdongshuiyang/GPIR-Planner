@@ -22,6 +22,15 @@
 #include "gtsam/nonlinear/LevenbergMarquardtParams.h"
 #include "gtsam/nonlinear/Symbol.h"
 
+#include "gp_planner/gp/factors/gp_state_uncertainty_factor.h"
+#include "gp_planner/gp/factors/gp_prediction_uncertainty_factor.h"
+#include "gp_planner/gp/factors/gp_execution_uncertainty_factor.h"
+#include "gp_planner/gp/uncertainty/uncertainty_propagator.h"
+#include "gp_planner/gp/uncertainty/uncertainty_evaluator.h"
+#include "gp_planner/gp/uncertainty/scene_analyzer.h"
+
+ 
+
 namespace planning {
 
 using common::NormalizeAngle;
@@ -304,4 +313,156 @@ int GPIncrementalPathPlanner::FindLocationIndex(const double s) {
               1;
   return std::max(0, index);
 }
+
+void GPIncrementalPathPlanner::SetUncertaintyModelingParams(
+    const UncertaintyModelingConfig& config) {
+  uncertainty_config_ = config;
+
+  // 初始化不确定性建模组件
+  scene_analyzer_ = std::make_unique<SceneAnalyzer>();
+  scene_analyzer_->Init(config.scene_analyzer_config);
+
+  uncertainty_evaluator_ = std::make_unique<UncertaintyEvaluator>();
+  uncertainty_evaluator_->Init(config.evaluator_config);
+
+  uncertainty_propagator_ = std::make_unique<UncertaintyPropagator>();
+  uncertainty_propagator_->Init(config.propagator_config);
+
+  // 初始化基础不确定性协方差
+  base_prediction_cov_ = config.base_prediction_cov;
+  base_state_cov_ = config.base_state_cov;
+  base_execution_cov_ = config.base_execution_cov;
+}
+
+bool GPIncrementalPathPlanner::GenerateUncertaintyAwareGPPath(
+    const ReferenceLine& reference_line,
+    const common::FrenetState& initial_state,
+    const double length,
+    const std::vector<double>& obstacle_location_hint,
+    GPPath* gp_path) {
+
+  // 1. 更新场景分析
+  scene_analyzer_->Update(reference_line, 
+                         navigation_map_->obstacles(),
+                         navigation_map_->ego_state());
+
+  // 2. 评估初始状态的不确定性
+  SceneFeatures init_features = 
+      scene_analyzer_->GetSceneFeatures(initial_state.s[0]);
+  
+  UncertaintyState init_uncertainty = 
+      uncertainty_evaluator_->EvaluateUncertainty(
+          init_features,
+          base_prediction_cov_,
+          base_state_cov_,
+          base_execution_cov_);
+
+  // 3. 生成基础GP路径
+  if (!GPIncrementalPathPlanner::GenerateInitialGPPath(
+          reference_line, initial_state, length,
+          obstacle_location_hint, gp_path)) {
+    return false;
+  }
+
+  // 4. 沿路径传播不确定性
+  cached_uncertainty_states_ = 
+      uncertainty_propagator_->PropagateAlongPath(
+          reference_line,
+          init_uncertainty,
+          *uncertainty_evaluator_);
+
+  // 5. 添加不确定性因子
+  for (int i = 0; i < num_of_nodes_; ++i) {
+    double s = node_locations_[i];
+    SceneFeatures features = scene_analyzer_->GetSceneFeatures(s);
+    const auto& uncertainty = cached_uncertainty_states_[i];
+
+    gtsam::Key key = gtsam::Symbol('x', i);
+    if (i > 0) {
+      gtsam::Key last_key = gtsam::Symbol('x', i-1);
+      
+      // 添加预测不确定性因子
+      graph_.add(GPPredictionUncertaintyFactor(
+          last_key, key, interval_, features, 
+          uncertainty.prediction_cov));
+      
+      // 添加执行不确定性因子
+      graph_.add(GPExecutionUncertaintyFactor(
+          last_key, key, interval_, features,
+          uncertainty.execution_cov,
+          uncertainty_config_.controller_params));
+    }
+
+    // 添加状态估计不确定性因子
+    graph_.add(GPStateUncertaintyFactor(
+        key, gp_path->nodes()[i], features,
+        uncertainty.state_cov));
+  }
+
+  return true;
+}
+
+bool GPIncrementalPathPlanner::UpdateUncertaintyAwareGPPath(
+    const ReferenceLine& reference_line,
+    const vector_Eigen3d& frenet_s,
+    GPPath* gp_path) {
+
+  // 1. 更新场景分析
+  scene_analyzer_->Update(reference_line,
+                         navigation_map_->obstacles(),
+                         navigation_map_->ego_state());
+
+  // 2. 对每个需要更新的状态
+  for (const auto& fs : frenet_s) {
+    int index = FindLocationIndex(fs(0));
+    if (index < 0) continue;
+
+    // 获取场景特征
+    SceneFeatures features = 
+        scene_analyzer_->GetSceneFeatures(fs(0));
+    
+    // 评估不确定性
+    UncertaintyState uncertainty = 
+        uncertainty_evaluator_->EvaluateUncertainty(
+            features,
+            base_prediction_cov_,
+            base_state_cov_,
+            base_execution_cov_);
+
+    // 传播不确定性
+    uncertainty = uncertainty_propagator_->PropagateUncertainty(
+        cached_uncertainty_states_[index],
+        features,
+        interval_);
+
+    // 更新缓存
+    cached_uncertainty_states_[index] = uncertainty;
+
+    // 添加新的不确定性因子
+    gtsam::Symbol current_node('x', index);
+    gtsam::Symbol next_node('x', index + 1);
+
+    graph_.add(GPPredictionUncertaintyFactor(
+        current_node, next_node, interval_,
+        features, uncertainty.prediction_cov));
+
+    graph_.add(GPExecutionUncertaintyFactor(
+        current_node, next_node, interval_,
+        features, uncertainty.execution_cov,
+        uncertainty_config_.controller_params));
+
+    graph_.add(GPStateUncertaintyFactor(
+        current_node, gp_path->nodes()[index],
+        features, uncertainty.state_cov));
+  }
+
+  // 3. 执行增量优化
+  isam2_.update(graph_);
+  map_result_ = isam2_.calculateEstimate();
+  gp_path->UpdateNodes(map_result_);
+
+  return true;
+}
+
+
 }  // namespace planning

@@ -22,6 +22,8 @@
 #include "gtsam/nonlinear/LevenbergMarquardtParams.h"
 #include "gtsam/nonlinear/Symbol.h"
 
+#include "gp_planner/gp/factors/gp_perception_uncertainty_factor.h"
+
 namespace planning {
 
 using common::NormalizeAngle;
@@ -134,7 +136,13 @@ bool GPIncrementalPathPlanner::DecideInitialPathBoundary(
 bool GPIncrementalPathPlanner::GenerateInitialGPPath(
     const ReferenceLine& reference_line,
     const common::FrenetState& initial_state, const double length,
-    const std::vector<double>& obstacle_location_hint, GPPath* gp_path) {
+    const std::vector<double>& obstacle_location_hint,
+    const std::vector<Obstacle>& obstacles,  // 新增参数
+    GPPath* gp_path) {
+
+  // 保存参考线指针
+  reference_line_ = &reference_line;    
+
   TIC;
   static auto sigma_initial = Isotropic::Sigma(3, 0.001);
   static auto sigma_goal = Diagonal::Sigmas(Vector3(1, 0.1, 0.1));
@@ -177,8 +185,12 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
       if (current_s > initial_state.s[1] * 3) {
         graph_.add(PriorFactor3(key, x_ref, sigma_reference));
       }
-      graph_.add(
-          GPObstacleFactor(key, sdf_, 0.1, kEpsilon, current_s, kappa_r));
+
+      // 添加不确定性因子
+      AddUncertaintyFactors(obstacles, current_s, key);
+
+      // graph_.add(
+          // GPObstacleFactor(key, sdf_, 0.1, kEpsilon, current_s, kappa_r));
       if (enable_curvature_constraint_) {
         graph_.add(GPKappaLimitFactor(key, 0.01, kappa_r, dkappa_r,
                                       kappa_limit_, current_s));
@@ -252,12 +264,24 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
     // map_result_ = isam2_.calculateEstimate();
   }
 
+
+  // 生成路径后进行安全性验证
+  if (!ValidatePathSafety(*gp_path, obstacles)) {
+    LOG(WARNING) << "Generated path fails safety check";
+    return false;
+  }
+
   return true;
 }
 
 bool GPIncrementalPathPlanner::UpdateGPPath(const ReferenceLine& reference_line,
                                             const vector_Eigen3d& frenet_s,
+                                            const std::vector<Obstacle>& obstacles,  // 新增参数
                                             GPPath* gp_path) {
+
+  // 更新参考线指针
+  reference_line_ = &reference_line;
+
   for (int i = 0; i < frenet_s.size(); ++i) {
     int index =
         std::floor((frenet_s[i](0) - node_locations_.front()) / interval_);
@@ -266,16 +290,31 @@ bool GPIncrementalPathPlanner::UpdateGPPath(const ReferenceLine& reference_line,
     graph_.add(GPLatAccLimitFactor(begin_node, end_node, kQc, interval_,
                                    frenet_s[i](0) - node_locations_[index],
                                    frenet_s[i](1), frenet_s[i](2), 2.5, 0.1));
+
+    // 添加不确定性因子
+    AddUncertaintyFactors(obstacles, node_locations_[index + 1], end_node);
   }
   isam2_.update(graph_);
   map_result_ = isam2_.calculateEstimate();
   gp_path->UpdateNodes(map_result_);
+
+  // 验证更新后的路径安全性
+  if (!ValidatePathSafety(*gp_path, obstacles)) {
+    LOG(WARNING) << "Updated path fails safety check";
+    return false;
+  }
+
   return true;
 }
 
 bool GPIncrementalPathPlanner::UpdateGPPathNonIncremental(
     const ReferenceLine& reference_line, const vector_Eigen3d& frenet_s,
+    const std::vector<Obstacle>& obstacles,  // 添加障碍物参数
     GPPath* gp_path) {
+  
+  // 更新参考线指针
+  reference_line_ = &reference_line;
+
   for (int i = 0; i < frenet_s.size(); ++i) {
     int index =
         std::floor((frenet_s[i](0) - node_locations_.front()) / interval_);
@@ -284,6 +323,8 @@ bool GPIncrementalPathPlanner::UpdateGPPathNonIncremental(
     graph_.add(GPLatAccLimitFactor(begin_node, end_node, kQc, interval_,
                                    frenet_s[i](0) - node_locations_[index],
                                    frenet_s[i](1), frenet_s[i](2), 2.5, 0.1));
+    // 添加不确定性因子
+    AddUncertaintyFactors(obstacles, node_locations_[index + 1], end_node);
   }
 
   gtsam::LevenbergMarquardtParams param;
@@ -294,6 +335,14 @@ bool GPIncrementalPathPlanner::UpdateGPPathNonIncremental(
 
   map_result_ = opt.optimize();
   gp_path->UpdateNodes(map_result_);
+
+
+  // 验证更新后的路径安全性
+  if (!ValidatePathSafety(*gp_path, obstacles)) {
+    LOG(WARNING) << "Non-incremental updated path fails safety check";
+    return false;
+  }
+
   return true;
 }
 
@@ -304,4 +353,78 @@ int GPIncrementalPathPlanner::FindLocationIndex(const double s) {
               1;
   return std::max(0, index);
 }
+
+void GPIncrementalPathPlanner::AddUncertaintyFactors(
+    const std::vector<Obstacle>& obstacles,
+    double current_s,
+    gtsam::Key key) {
+  
+  // 确保参考线指针有效
+  CHECK(reference_line_ != nullptr) << "Reference line not set";
+
+  // 更新曲率
+  double dkappa_r{0.0};
+  reference_line_->GetCurvature(current_s, &kappa_r_, &dkappa_r);
+
+  // 遍历所有障碍物，为每个障碍物添加不确定性因子
+  for (const auto& obstacle : obstacles) {
+    // 检查障碍物是否在当前位置的影响范围内
+    double distance = std::abs(obstacle.state().s - current_s);
+    if (distance > 30.0) continue;  // 忽略太远的障碍物
+
+    // 获取障碍物的不确定性信息
+    const auto& uncertainty = obstacle.perception_uncertainty();
+    
+    // 如果障碍物有有效的不确定性信息，使用它的不确定性
+    if (uncertainty.IsValid()) {
+      graph_.add(
+          GPPerceptionUncertaintyFactor(key, sdf_, uncertainty,
+                                      0.1, kEpsilon, current_s, kappa_r_));
+    } else {
+      // 否则使用默认的不确定性设置
+      graph_.add(
+          GPPerceptionUncertaintyFactor(key, sdf_, default_uncertainty_,
+                                      0.1, kEpsilon, current_s, kappa_r_));
+    }
+  }
+}
+
+bool GPIncrementalPathPlanner::ValidatePathSafety(
+    const GPPath& path,
+    const std::vector<Obstacle>& obstacles) const {
+    
+  // 在路径上均匀采样进行安全性检查
+  constexpr double kCheckResolution = 0.5;  // 每0.5米检查一次
+  double s = path.start_s();
+  
+  while (s < path.MaximumArcLength()) {
+    common::State state;
+    path.GetState(s, &state);
+    
+    // 检查与每个障碍物的安全性
+    for (const auto& obstacle : obstacles) {
+      double collision_prob;
+      const auto& uncertainty = obstacle.perception_uncertainty();
+      
+      if (!sdf_->CheckSafetyWithUncertainty(
+          state.position, 
+          uncertainty.IsValid() ? uncertainty : default_uncertainty_,
+          kSafetyThreshold,
+          &collision_prob)) {
+        
+        LOG(WARNING) << "Unsafe state detected at s = " << s
+                    << ", collision probability: " << collision_prob;
+        return false;
+      }
+    }
+    
+    s += kCheckResolution;
+  }
+  
+  return true;
+}
+
+
+
+
 }  // namespace planning

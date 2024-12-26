@@ -11,6 +11,9 @@
 #include <vector>
 
 #include "gp_planner/sdf/grid_map_2d.h"
+// 添加感知不确定性头文件
+#include "planning_core/planning_common/perception_uncertainty.h"
+#include <Eigen/Dense>  // 确保Eigen头文件也被包含
 
 namespace planning {
 
@@ -61,6 +64,32 @@ class SignedDistanceField2D {
                                Eigen::Vector2d* grad = nullptr) const {
     return esdf_.GetValueBilinear(coord, grad);
   }
+
+  /**
+   * @brief 考虑不确定性的距离场查询
+   * @param coord 查询点的坐标
+   * @param uncertainty 感知不确定性信息
+   * @param grad 可选的梯度输出
+   * @return 修正后的有向距离
+   */
+  double GetSignedDistanceWithUncertainty(
+      const Eigen::Vector2d& coord,
+      const PerceptionUncertainty& uncertainty,
+      Eigen::Vector2d* grad = nullptr) const;
+
+  /**
+   * @brief 检查给定点是否在考虑不确定性的情况下安全
+   * @param coord 待检查点的坐标
+   * @param uncertainty 感知不确定性信息
+   * @param safety_threshold 安全阈值
+   * @param collision_prob 输出的碰撞概率
+   * @return 是否安全
+   */
+  bool CheckSafetyWithUncertainty(
+      const Eigen::Vector2d& coord,
+      const PerceptionUncertainty& uncertainty,
+      double safety_threshold,
+      double* collision_prob = nullptr) const;
 
  protected:
   void EuclideanDistanceTransform(

@@ -1,0 +1,17 @@
+# 感知不确定性参数配置
+perception_uncertainty:
+  # 位置不确定性参数
+  base_position_std: 0.1        # 基础位置标准差（米）
+  position_growth_rate: 0.01    # 位置不确定性随距离的增长率（米/米）
+
+  # 朝向不确定性参数
+  base_heading_std: 0.1         # 基础朝向标准差（弧度）
+  heading_growth_rate: 0.02     # 朝向不确定性随距离的增长率（弧度/米）
+
+  # 观测限制参数
+  max_reliable_distance: 50.0   # 最大可靠观测距离（米）
+  reliable_fov_angle: 1.57      # 可靠视场角（弧度，约90度）
+
+  # 几何尺寸不确定性参数
+  size_uncertainty_base: 0.05   # 基础尺寸不确定性（米）
+  size_uncertainty_rate: 0.01   # 尺寸不确定性随距离的增长率（米/米）

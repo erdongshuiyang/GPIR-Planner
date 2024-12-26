@@ -9,6 +9,7 @@ target_sources(gp_planner_gp
     factors/gp_lat_acc_limit_factor.cc
     factors/gp_interpolate_obstacle_factor.cc
     factors/gp_interpolate_kappa_limit_factor.cc
+    factors/gp_perception_uncertainty_factor.cc
     utils/gp_utils.cc
     utils/gp_path.cc
     gp_incremental_path_planner.cc
@@ -19,4 +20,10 @@ target_link_libraries(gp_planner_gp PUBLIC
   planning_core::navigation
   common::smoothing
   gp_planner::initializer
+  planning_core_common
+)
+
+target_include_directories(gp_planner_gp
+  PUBLIC
+    ${CMAKE_SOURCE_DIR}  # 确保这行存在
 )

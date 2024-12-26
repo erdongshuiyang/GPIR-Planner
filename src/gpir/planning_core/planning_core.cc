@@ -17,9 +17,98 @@
 
 namespace planning {
 
+void UncertaintyEstimator::Init(const ros::NodeHandle& nh) {
+  std::string prefix = "perception_uncertainty/";
+  
+  // 加载距离相关参数
+  nh.param(prefix + "base_position_std", base_position_std_, 0.1);
+  nh.param(prefix + "position_growth_rate", position_growth_rate_, 0.01);
+  
+  // 加载朝向相关参数
+  nh.param(prefix + "base_heading_std", base_heading_std_, 0.1);
+  nh.param(prefix + "heading_growth_rate", heading_growth_rate_, 0.02);
+  
+  // 加载观测限制参数
+  nh.param(prefix + "max_reliable_distance", max_reliable_distance_, 50.0);
+  nh.param(prefix + "reliable_fov_angle", reliable_fov_angle_, M_PI_2);
+  
+  // 加载几何尺寸不确定性参数
+  nh.param(prefix + "size_uncertainty_base", size_uncertainty_base_, 0.05);
+  nh.param(prefix + "size_uncertainty_rate", size_uncertainty_rate_, 0.01);
+}
+
+void UncertaintyEstimator::EstimateObstacleUncertainty(
+    const common::State& ego_state,
+    Obstacle* obstacle) {
+  const auto& obs_state = obstacle->state();
+  
+  // 计算相对位置和距离
+  Eigen::Vector2d relative_pos = obs_state.position - ego_state.position;
+  double distance = relative_pos.norm();
+  
+  // 计算观测角度（相对于车辆前向）
+  double obs_angle = std::atan2(relative_pos.y(), relative_pos.x()) - 
+                    ego_state.heading;
+  obs_angle = common::NormalizeAngle(obs_angle);
+  
+  // 计算不确定性衰减因子（基于距离）
+  double distance_factor = std::min(1.0, distance / max_reliable_distance_);
+  
+  // 计算视场角因子（越接近视场边缘不确定性越大）
+  double angle_factor = std::abs(obs_angle) / reliable_fov_angle_;
+  
+  // 计算位置不确定性
+  double position_std = base_position_std_ + 
+                       position_growth_rate_ * distance * distance_factor;
+                       
+  // 考虑观测角度的影响
+  position_std *= (1.0 + angle_factor);
+  
+  // 设置位置不确定性（考虑径向和切向差异）
+  double radial_std = position_std;
+  double tangential_std = position_std * 1.2;  // 切向不确定性略大
+  
+  // 构建旋转矩阵，将不确定性从极坐标转换到笛卡尔坐标
+  double cos_theta = relative_pos.x() / distance;
+  double sin_theta = relative_pos.y() / distance;
+  
+  Eigen::Matrix2d R;  // 旋转矩阵
+  R << cos_theta, -sin_theta,
+       sin_theta, cos_theta;
+       
+  Eigen::Matrix2d D;  // 对角矩阵（径向和切向方差）
+  D << radial_std * radial_std, 0,
+       0, tangential_std * tangential_std;
+       
+  // 计算笛卡尔坐标系下的协方差矩阵
+  Eigen::Matrix2d cov = R * D * R.transpose();
+  
+  // 设置位置不确定性
+  obstacle->mutable_perception_uncertainty()->SetPositionCovariance(
+      cov(0,0), cov(1,1), cov(0,1));
+  
+  // 设置朝向不确定性
+  double heading_std = base_heading_std_ + 
+                      heading_growth_rate_ * distance * distance_factor;
+  heading_std *= (1.0 + angle_factor);
+  obstacle->mutable_perception_uncertainty()->heading_variance = 
+      heading_std * heading_std;
+  
+  // 设置几何尺寸不确定性
+  double size_uncertainty = size_uncertainty_base_ + 
+                          size_uncertainty_rate_ * distance * distance_factor;
+  obstacle->mutable_perception_uncertainty()->length_variance = 
+      size_uncertainty * size_uncertainty;
+  obstacle->mutable_perception_uncertainty()->width_variance = 
+      size_uncertainty * size_uncertainty;
+}
+
+
+
 void PlanningCore::Init() {
   ros::NodeHandle node("~");
-
+  ros::NodeHandle nh("~"); 
+  
   bool load_param = true;
   std::string simulator, town, map_path;
   load_param &= node.getParam("simulator", simulator);
@@ -58,6 +147,9 @@ void PlanningCore::Init() {
   // init planner
   planner_ = std::make_unique<GPPlanner>();
   planner_->Init();
+
+  // 初始化不确定性估计器
+  uncertainty_estimator_.Init(nh);
 }
 
 void PlanningCore::Run(const ros::TimerEvent&) {
@@ -138,8 +230,16 @@ void PlanningCore::JoyCallBack(const sensor_msgs::Joy& joy) {
 
 bool PlanningCore::UpdateDataFrame() {
   if (!simulator_->UpdateEgoState(&data_frame_->state)) return false;
-  if (!simulator_->UpdatePerceptionResults(&data_frame_->obstacles))
+  if (!simulator_->UpdatePerceptionResults(&data_frame_->obstacles)) {
     return false;
+  }
+
+  // 更新每个障碍物的不确定性估计
+  for (auto& obstacle : data_frame_->obstacles) {
+    uncertainty_estimator_.EstimateObstacleUncertainty(
+        data_frame_->state, &obstacle);
+  }
+
   return true;
 }
 }  // namespace planning

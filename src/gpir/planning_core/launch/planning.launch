@@ -4,12 +4,19 @@
 <arg name="town" default="Town05"/>
 <arg name="simulator" default="Carla"/>
 
+<!-- 添加不确定性配置文件的路径参数 -->
+<arg name="uncertainty_config" default="$(find planning_core)/config/perception_uncertainty.yaml"/>
+
 <env name="LD_LIBRARY_PATH" value="$(env LD_LIBRARY_PATH):/$(find gp_planner)/thirdparty/gtsam-4.1rc/install/lib"/>
 <node pkg="planning_core" name="planning" type="planning" output="screen">
   <param name="town" value="$(arg town)"/>
   <param name="simulator" value="$(arg simulator)"/>
   <param name="map_path" value="$(arg map_path)"/>
   <param name="random_drive_mode" value="true"/>
+
+  <!-- 加载不确定性配置文件 -->
+  <rosparam command="load" file="$(arg uncertainty_config)"/>
+  
 </node>
 
 <node pkg="planning_core" name="carla_controller" type="carla_controller" >

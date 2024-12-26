@@ -165,6 +165,7 @@ bool GPPlanner::PlanWithGPIR(
   GPIncrementalPathPlanner gp_path_planner(sdf);
   if (!gp_path_planner.GenerateInitialGPPath(reference_line, frenet_state, 100,
                                              obstacle_location_hint,
+                                             dynamic_agents, 
                                              &gp_path)) {
     LOG(ERROR) << "[GPPlanner]: fail to generate initla path";
     return false;
@@ -199,7 +200,7 @@ bool GPPlanner::PlanWithGPIR(
   vector_Eigen3d invalid_lat_frenet_s;
   while (trajectory_index_ < 1 &&
          !st_graph.IsTrajectoryFeasible(gp_path, &invalid_lat_frenet_s)) {
-    gp_path_planner.UpdateGPPath(reference_line, invalid_lat_frenet_s,
+    gp_path_planner.UpdateGPPath(reference_line, invalid_lat_frenet_s, dynamic_agents, 
                                  &gp_path);
     // gp_path_planner.UpdateGPPathNonIncremental(reference_line,
     //                                            invalid_lat_frenet_s,

@@ -199,4 +199,86 @@ void SignedDistanceField2D::UpdateVerticalSDF() {
   }
 }
 
+double SignedDistanceField2D::GetSignedDistanceWithUncertainty(
+    const Eigen::Vector2d& coord,
+    const PerceptionUncertainty& uncertainty,
+    Eigen::Vector2d* grad) const {
+    
+  // 获取基础SDF距离和梯度
+  Eigen::Vector2d base_gradient;
+  double base_distance = SignedDistance(coord, &base_gradient);
+  
+  if (grad) {
+  // 确保梯度非空且在边界情况下仍然有效
+    static constexpr double kMinGradientNorm = 1e-8;
+    static constexpr double kEpsilon = 1e-6;
+  if (base_gradient.norm() < kMinGradientNorm) {
+    // 在边界情况下使用数值差分计算梯度
+    const double eps = 1e-4;
+    Eigen::Vector2d dx(eps, 0.0);
+    Eigen::Vector2d dy(0.0, eps);
+    base_gradient[0] = (SignedDistance(coord + dx) - 
+                       SignedDistance(coord - dx)) / (2.0 * eps);
+    base_gradient[1] = (SignedDistance(coord + dy) - 
+                       SignedDistance(coord - dy)) / (2.0 * eps);
+  }
+  *grad = base_gradient.normalized();
+  }
+
+  // 如果不确定性信息无效,直接返回基础距离
+  if (!uncertainty.IsValid()) {
+    return base_distance;
+  }
+
+  // 计算距离场梯度方向上的不确定性
+  double sigma = std::sqrt(base_gradient.transpose() * 
+                          uncertainty.position_covariance * 
+                          base_gradient);
+
+  // 考虑几何尺寸的不确定性
+  double size_uncertainty = std::sqrt(uncertainty.length_variance + 
+                                    uncertainty.width_variance);
+
+  // 使用3σ规则修正距离值
+  double modified_distance = base_distance - 3.0 * sigma - size_uncertainty;
+
+  return modified_distance;
+}
+
+bool SignedDistanceField2D::CheckSafetyWithUncertainty(
+    const Eigen::Vector2d& coord,
+    const PerceptionUncertainty& uncertainty,
+    double safety_threshold,
+    double* collision_prob) const {
+    
+  // 获取SDF距离和梯度
+  Eigen::Vector2d gradient;
+  double distance = SignedDistance(coord, &gradient);
+
+  // 计算梯度方向上的不确定性
+  double sigma = std::sqrt(gradient.transpose() * 
+                          uncertainty.position_covariance * 
+                          gradient);
+
+  // 考虑几何尺寸不确定性
+  double total_uncertainty = std::sqrt(
+      uncertainty.length_variance + 
+      uncertainty.width_variance);
+  
+  // 使用误差函数计算碰撞概率
+  // P(collision) = P(distance + N(0,sigma^2) < safety_threshold)
+  double normalized_distance = (distance - safety_threshold) / 
+                             (std::sqrt(2.0) * (sigma + total_uncertainty));
+  double prob = 0.5 * (1.0 + std::erf(-normalized_distance));
+
+  if (collision_prob) {
+    *collision_prob = prob;
+  }
+
+  // 如果碰撞概率低于阈值则认为安全
+  constexpr double kMaxAllowedCollisionProb = 0.05;  // 5%的碰撞概率阈值
+  return prob < kMaxAllowedCollisionProb;
+}
+
+
 }  // namespace planning

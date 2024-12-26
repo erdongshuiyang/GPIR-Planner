@@ -11,6 +11,7 @@
 
 #include "common/base/state.h"
 #include "common/geometry/box2d.h"
+#include "planning_core/planning_common/perception_uncertainty.h"
 
 namespace planning {
 
@@ -46,6 +47,16 @@ class Obstacle {
   void SetBoundingBox(const double length, const double width,
                       const double height);
 
+
+  // 添加新的方法
+  inline const PerceptionUncertainty& perception_uncertainty() const {
+    return perception_uncertainty_;
+  }
+  
+  inline PerceptionUncertainty* mutable_perception_uncertainty() {
+    return &perception_uncertainty_;
+  }
+
  private:
   int id_ = 0;
   bool is_static_ = false;
@@ -56,6 +67,8 @@ class Obstacle {
 
   std::vector<int> lane_id_list_;
   std::vector<common::State> predition_;
+
+  PerceptionUncertainty perception_uncertainty_;
 };
 
 }  // namespace planning

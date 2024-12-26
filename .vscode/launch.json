@@ -6,12 +6,12 @@
             "type": "ros",
             "request": "launch",
             "target": "/home/erdong2004/GPIR_planner_ws/src/gpir/planning_core/launch/planning.launch",
+            "program": "${workspaceFolder}/devel/lib/planning_core/planning",
             "preLaunchTask": "source_ros_workspace",
             "env": {
                 "ROS_MASTER_URI": "http://localhost:11311",
-                "ROS_PACKAGE_PATH": "/home/erdong2004/GPIR_planner_ws/src:/opt/ros/noetic/share",
-                "PYTHONPATH": "${env:PYTHONPATH}:/opt/ros/noetic/lib/python3/dist-packages",
-                "LD_LIBRARY_PATH": "${env:LD_LIBRARY_PATH}:/opt/ros/noetic/lib"
+                "ROS_PACKAGE_PATH": "${workspaceFolder}/src:/opt/ros/noetic/share",
+                "LD_LIBRARY_PATH": "${env:LD_LIBRARY_PATH}:/home/erdong2004/GPIR_planner_ws/src/gpir/gp_planner/thirdparty/gtsam-4.1rc/install/lib"
             }
         }
     ]

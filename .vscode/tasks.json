@@ -4,19 +4,14 @@
         {
             "label": "source_ros_workspace",
             "type": "shell",
-            "linux": {
-                "command": "/bin/bash",
-                "args": [
-                    "-c",
-                    "source /opt/ros/noetic/setup.bash && source /home/erdong2004/GPIR_planner_ws/devel/setup.bash"
-                ]
-            },
-            "problemMatcher": [],
+            "command": "/bin/bash",
+            "args": [
+                "-c",
+                "cd ${workspaceFolder} && source /opt/ros/noetic/setup.bash && source devel/setup.bash"
+            ],
             "presentation": {
-                "reveal": "always"
-            },
-            "options": {
-                "cwd": "${workspaceFolder}"
+                "reveal": "always",
+                "panel": "new"
             }
         }
     ]

@@ -1,96 +1,14 @@
 {
-    // Python 自动补全和分析路径
+    "ros.distro": "noetic",
     "python.autoComplete.extraPaths": [
-        "/home/erdong2004/GPIR_planner_ws/devel/lib/python3/dist-packages",
-        "/opt/ros/noetic/lib/python3/dist-packages",
-        "/home/erdong2004/CARLA_0.9.11/PythonAPI/carla/dist/carla-0.9.11-py3.7-linux-x86_64.egg",
-        "/home/erdong2004/CARLA_0.9.11/PythonAPI/carla"
+        "/opt/ros/noetic/lib/python3/dist-packages"
     ],
+    "ros.rosSetupScript": "/opt/ros/noetic/setup.bash",
+    "ros.workspaceSetupScript": "${workspaceFolder}/devel/setup.bash",
     "python.analysis.extraPaths": [
         "/home/erdong2004/GPIR_planner_ws/devel/lib/python3/dist-packages",
         "/opt/ros/noetic/lib/python3/dist-packages",
         "/home/erdong2004/CARLA_0.9.11/PythonAPI/carla/dist/carla-0.9.11-py3.7-linux-x86_64.egg",
         "/home/erdong2004/CARLA_0.9.11/PythonAPI/carla"
-    ],
-
-    // 文件关联：为 C++ 文件设置正确的语法高亮
-    "files.associations": {
-        "*.tcc": "cpp",
-        "array": "cpp",
-        "atomic": "cpp",
-        "bit": "cpp",
-        "bitset": "cpp",
-        "cfenv": "cpp",
-        "chrono": "cpp",
-        "clocale": "cpp",
-        "cmath": "cpp",
-        "condition_variable": "cpp",
-        "cstdint": "cpp",
-        "cstdio": "cpp",
-        "cstdlib": "cpp",
-        "cstring": "cpp",
-        "ctime": "cpp",
-        "cwchar": "cpp",
-        "deque": "cpp",
-        "exception": "cpp",
-        "fstream": "cpp",
-        "functional": "cpp",
-        "future": "cpp",
-        "initializer_list": "cpp",
-        "iomanip": "cpp",
-        "iosfwd": "cpp",
-        "iostream": "cpp",
-        "istream": "cpp",
-        "iterator": "cpp",
-        "limits": "cpp",
-        "list": "cpp",
-        "map": "cpp",
-        "memory": "cpp",
-        "memory_resource": "cpp",
-        "mutex": "cpp",
-        "new": "cpp",
-        "numeric": "cpp",
-        "optional": "cpp",
-        "ostream": "cpp",
-        "random": "cpp",
-        "ratio": "cpp",
-        "regex": "cpp",
-        "set": "cpp",
-        "shared_mutex": "cpp",
-        "sstream": "cpp",
-        "stdexcept": "cpp",
-        "streambuf": "cpp",
-        "string": "cpp",
-        "string_view": "cpp",
-        "system_error": "cpp",
-        "thread": "cpp",
-        "tuple": "cpp",
-        "type_traits": "cpp",
-        "typeindex": "cpp",
-        "typeinfo": "cpp",
-        "unordered_map": "cpp",
-        "unordered_set": "cpp",
-        "utility": "cpp",
-        "variant": "cpp",
-        "vector": "cpp"
-    },
-
-    // 配置终端默认行为
-    "terminal.integrated.defaultProfile.linux": "bash", // 使用bash作为默认终端
-    "terminal.integrated.env.linux": {
-        "ROS_MASTER_URI": "http://localhost:11311",
-        "ROS_PACKAGE_PATH": "/home/erdong2004/GPIR_planner_ws/src:/opt/ros/noetic/share"
-    },
-
-    // 禁止复用终端，确保每次运行新任务
-    "tasks.reuseTerminals": false,
-
-    // 调试器相关设置
-    "debug.console.closeOnEnd": false, // 调试完成后终端保持打开
-    "debug.allowBreakpointsEverywhere": true, // 允许在任何文件中设置断点
-
-    // 内联代码建议
-    "editor.inlineSuggest.enabled": true,
-    "cmake.sourceDirectory": "/home/erdong2004/GPIR_planner_ws/src/gpir/common"
+    ]
 }
-

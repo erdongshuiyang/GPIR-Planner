@@ -6,8 +6,8 @@
         "limitSymbolsToIncludedHeaders": false
       },
       "includePath": [
-        "/home/erdong2004/GPIR_planner_ws/devel/include/**",
         "/opt/ros/noetic/include/**",
+        "/home/erdong2004/GPIR_planner_ws/devel/include/**",
         "/home/erdong2004/GPIR_planner_ws/src/gpir/ros-bridge/pcl_recorder/include/**",
         "/usr/include/**"
       ],

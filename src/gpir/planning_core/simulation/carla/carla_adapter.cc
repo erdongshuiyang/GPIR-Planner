@@ -54,11 +54,18 @@ bool CarlaAdapter::UpdatePerceptionResults(std::vector<Obstacle>* obstacles) {
 void CarlaAdapter::SetTrajectory(const common::Trajectory& trajectory) {
   common::State ego_state;
   ackermann_msgs::AckermannDrive ackermann_drive;
+  // 1. 设置车辆参数
   CHECK_GT(wheel_base_, 2);
   mpc_controller_.set_wheel_base(wheel_base_);
+
+  // 2. 更新车辆状态
   carla_ego_info_.UpdateEgoState(&ego_state);
+
+  // 3. 计算控制量
   mpc_controller_.CalculateAckermannDrive(ego_state, trajectory,
                                           &ackermann_drive);
+
+  // 4. 发布控制消息
   control_cmd_pub_.publish(ackermann_drive);
 }
 

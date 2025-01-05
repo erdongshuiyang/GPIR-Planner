@@ -70,6 +70,7 @@ bool MpcController::CalculateAckermannDrive(
     return false;
   }
 
+  // 1. 预测状态
   Eigen::Vector2d predict_pos = state.position;
   double predict_heading = state.heading;
   double predict_v = last_control_[0];
@@ -82,6 +83,7 @@ bool MpcController::CalculateAckermannDrive(
     predict_pos.y() += predict_v * std::sin(predict_heading) * ts_;
     predict_heading += predict_v / ls_ * std::tan(predict_steer) * ts_;
   }
+  // 2. 获取参考点
   auto ref_index = trajectory.GetNearsetIndex(predict_pos);
   if (ref_index == trajectory.size()) {
     LOG_EVERY_N(WARNING, 20) << "reached the end of trajectory";
@@ -99,6 +101,7 @@ bool MpcController::CalculateAckermannDrive(
   double ref_theta = ref_state.heading;
   double ref_steer = std::atan(ls_ * ref_state.kappa);
 
+  // 3. 构建线性化模型
   matrix_a(0, 2) = -ref_v * std::sin(ref_theta);
   matrix_a(1, 2) = ref_v * std::cos(ref_theta);
 
@@ -106,7 +109,9 @@ bool MpcController::CalculateAckermannDrive(
   matrix_b(1, 0) = std::sin(ref_theta);
   matrix_b(2, 0) = std::tan(ref_steer) / ls_;
   matrix_b(2, 1) = ref_v / (ls_ * std::cos(ref_steer) * std::cos(ref_steer));
+  // ...构建系统矩阵
 
+  // 4. 离散化
   Discretization(matrix_a, matrix_b);
 
   matrix_a_piao_.block(0, 0, nx_, nx_) = matrix_ad_;
@@ -136,21 +141,25 @@ bool MpcController::CalculateAckermannDrive(
   MatrixXd matrix_ref = MatrixXd::Zero(nu_ + nx_, 1);
   std::vector<double> optimal_control;
 
+  // 5. 构造OSQP优化问题
   LmpcOsqpSolver lmpc_solver(
       matrix_a_piao_, matrix_b_piao_, matrix_q_, matrix_r_, matrix_initial_x,
       matrix_umin_, matrix_umax_, matrix_xmin_relative_, matrix_xmax_relative_,
       matrix_ref, horizon_, 2000, 1e-6);
 
+  // 6. 求解最优控制
   if (!lmpc_solver.Solve(&optimal_control)) {
     SetStopCommand(control_cmd);
     return false;
   }
 
+  // 7. 提取控制量
   double optimal_speed = std::min(last_control_[0] + optimal_control[0], ref_v);
   double optimal_accel = optimal_control[0];
   double optimal_steer = last_control_[1] + optimal_control[1];
   double optimal_steer_rate = optimal_control[1];
 
+  // 8. 转换为Ackermann消息
   control_cmd->acceleration = optimal_control[0] / ts_;
   // control_cmd->acceleration = 0.0;
   control_cmd->speed = optimal_speed;
@@ -158,6 +167,7 @@ bool MpcController::CalculateAckermannDrive(
   control_cmd->steering_angle = bf_steer_.Update(optimal_steer);
   control_cmd->steering_angle_velocity = optimal_steer_rate;
 
+  // 9. 记录历史控制
   last_control_[0] = optimal_speed;
   last_control_[1] = optimal_steer;
   LOG(WARNING) << "ref speed: " << ref_v << ", speed: " << optimal_speed

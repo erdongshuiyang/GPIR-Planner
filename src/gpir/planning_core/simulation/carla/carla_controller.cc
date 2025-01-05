@@ -99,7 +99,8 @@ int main(int argc, char* argv[]) {
       node.subscribe("/carla/ego_vehicle/vehicle_status", 1, &StateCallBack);
   control_pub = node.advertise<carla_msgs::CarlaEgoVehicleControl>(
       "/carla/ego_vehicle/vehicle_control_cmd", 1);
-
+  
+  // 2. PID控制器初始化
   PIDController speed_controller(kp, ki, kd);
   speed_controller.SetOutputLimit(4.0, -8);
   speed_controller.SetIntegralLimit(20, -15.0);
@@ -107,8 +108,10 @@ int main(int argc, char* argv[]) {
   ros::Rate rate(50);
   while (ros::ok()) {
     ros::spinOnce();
+    // 3. PID计算实际控制量
     double acc = speed_controller.Control(target_speed - current_speed, 0.02);
 
+    // 4. 转换为Carla控制指令
     carla_msgs::CarlaEgoVehicleControl control_cmd;
     control_cmd.header.stamp = ros::Time::now();
     if (acc >= 0) {

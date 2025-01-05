@@ -21,7 +21,14 @@
 #include "planning_core/planning_common/behavior.h"
 #include "planning_core/planning_common/data_frame.h"
 
+#include "planning_core/planning_common/perception_uncertainty.h"
+
+
+
 namespace planning {
+
+// 前向声明
+class UncertaintyEstimator;
 
 class NavigationMap {
  public:
@@ -71,6 +78,16 @@ class NavigationMap {
     return virtual_obstacles_;
   }
 
+  // 添加设置不确定性估计器的方法
+  void SetUncertaintyEstimator(const UncertaintyEstimator* estimator) {
+    uncertainty_estimator_ = estimator;
+  }
+
+  // 获取静态障碍物不确定性的方法
+  const PerceptionUncertainty& static_obstacle_uncertainty() const {
+    return static_obstacle_uncertainty_;
+  }
+
  protected:
   bool SelectRouteSequence(const common::State& state);
 
@@ -99,6 +116,9 @@ class NavigationMap {
   void PublishVirtualObstacles();
 
  private:
+  // 更新静态障碍物的不确定性
+  void UpdateStaticObstacleUncertainty();
+
   ros::Publisher reference_line_pub_;
   ros::Publisher route_sequence_pub_;
   ros::Publisher virtual_obstacle_pub_;
@@ -123,5 +143,9 @@ class NavigationMap {
   int add_num_ = 1;
   bool add_virtual_obstacles_ = false;
   std::vector<Eigen::Vector2d> virtual_obstacles_;
+
+   // 在私有成员变量区域添加
+  PerceptionUncertainty static_obstacle_uncertainty_;
+  const UncertaintyEstimator* uncertainty_estimator_{nullptr};
 };
 }  // namespace planning

@@ -20,6 +20,8 @@
 #include <std_msgs/Float64MultiArray.h>
 #include <geometry_msgs/PoseStamped.h>
 
+#include <planning_core/planning_common/perception_uncertainty.h>
+
 namespace planning {
 
 class GPPlanner : public Planner {
@@ -29,6 +31,11 @@ class GPPlanner : public Planner {
 
   void Init() override;
   void PlanOnce(NavigationMap* navigation_map_) override;
+
+  // 添加设置静态障碍物不确定性的方法
+  void SetStaticObstacleUncertainty(const PerceptionUncertainty& uncertainty)  override {
+    static_obstacle_uncertainty_ = uncertainty;
+  }
 
  protected:
   bool PlanWithGPIR(const common::State& ego_state,
@@ -86,6 +93,9 @@ class GPPlanner : public Planner {
     double refinement = 0.0;
   };
   TimeConsumption time_consuption_;
+
+  // 添加静态障碍物不确定性成员
+  PerceptionUncertainty static_obstacle_uncertainty_;
 };
 
 }  // namespace planning

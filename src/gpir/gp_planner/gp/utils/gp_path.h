@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <glog/logging.h>
+
 #include "common/base/type.h"
 #include "common/geometry/box2d.h"
 #include "gp_planner/gp/interpolator/gp_interpolator.h"

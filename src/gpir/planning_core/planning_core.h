@@ -42,7 +42,7 @@ class UncertaintyEstimator {
    */
   void EstimateObstacleUncertainty(
       const common::State& ego_state,
-      Obstacle* obstacle);
+      Obstacle* obstacle) const;
 
  private:
   // 距离相关的不确定性参数

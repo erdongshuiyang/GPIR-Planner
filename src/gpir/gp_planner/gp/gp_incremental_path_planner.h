@@ -25,9 +25,14 @@ class GPIncrementalPathPlanner {
   GPIncrementalPathPlanner(std::shared_ptr<SignedDistanceField2D> sdf)
       : sdf_(sdf){};
 
-   // 添加不确定性相关的设置方法
-  void SetDefaultUncertainty(const PerceptionUncertainty& uncertainty) {
-    default_uncertainty_ = uncertainty;
+  //  // 添加不确定性相关的设置方法
+  // void SetDefaultUncertainty(const PerceptionUncertainty& uncertainty) {
+  //   default_uncertainty_ = uncertainty;
+  // }
+
+   // 添加设置静态障碍物不确定性的方法 
+  void SetStaticObstacleUncertainty(const PerceptionUncertainty& uncertainty) {
+    static_obstacle_uncertainty_ = uncertainty;
   }
 
   // 设置参考线的方法放在公共方法部分
@@ -89,6 +94,8 @@ class GPIncrementalPathPlanner {
   std::vector<double> node_locations_;
   std::shared_ptr<SignedDistanceField2D> sdf_;
 
+
+
   // 用于处理不确定性的辅助方法
   void AddUncertaintyFactors(const std::vector<Obstacle>& obstacles,
                             double current_s,
@@ -98,12 +105,15 @@ class GPIncrementalPathPlanner {
   bool ValidatePathSafety(const GPPath& path,
                          const std::vector<Obstacle>& obstacles) const;
 
-  // 添加默认的不确定性参数
-  PerceptionUncertainty default_uncertainty_;
+  // // 添加默认的不确定性参数
+  // PerceptionUncertainty default_uncertainty_;
+
+  // 存储静态障碍物的不确定性
+  PerceptionUncertainty static_obstacle_uncertainty_;
 
   // 安全性相关参数
-  static constexpr double kSafetyThreshold = 0.5;
-  static constexpr double kMaxCollisionProb = 0.05;
+  static constexpr double kSafetyThreshold = 0.3; //0.5
+  static constexpr double kMaxCollisionProb = 0.2; //0.05
 
   // options
   bool enable_curvature_constraint_ = true;

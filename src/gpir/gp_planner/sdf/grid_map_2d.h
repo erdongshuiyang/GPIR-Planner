@@ -91,6 +91,11 @@ class GridMap2D {
   cv::Mat ImageSec() const;
   cv::Mat BinaryImage() const;
 
+  // 添加设置栅格状态的新方法
+  inline void SetGridState(const int x, const int y, bool is_occupied) {
+      SetValue(x, y, is_occupied ? static_cast<T>(255) : static_cast<T>(0));
+  }
+
  public:
   void FillCircle(const Eigen::Vector2d& center, double radius);
   void FillPoly(const vector_Eigen<Eigen::Vector2d>& points);

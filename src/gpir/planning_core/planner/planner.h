@@ -14,6 +14,10 @@ namespace planning {
 class Planner {
  public:
   Planner() = default;
+
+  virtual void SetStaticObstacleUncertainty(
+        const PerceptionUncertainty& uncertainty) = 0;
+        
   virtual ~Planner() = default;
 
   virtual void Init() = 0;

@@ -21,6 +21,9 @@
 #include "hdmap/road_network/lane_map.h"
 #include "planning_core/planning_common/planning_visual.h"
 
+#include "planning_core/planning_core.h"
+
+
 namespace planning {
 
 using common::RandomDouble;
@@ -248,11 +251,20 @@ bool NavigationMap::UpdateReferenceLine() {
 }
 
 void NavigationMap::UpdateVirtualObstacles() {
+  LOG(INFO) << "\n================ Virtual Obstacles Update Start ================";
+
+  // 打印当前车辆状态
+  // LOG(INFO) << "Ego vehicle state - "
+  //           << "\nPosition: " << data_frame_->state.position.transpose()
+  //           << "\nHeading: " << data_frame_->state.heading;
+
+  // 1. 清理过期的障碍物
   std::set<int> valid_obstacle_index;
   for (const auto& reference_line : reference_lines_) {
     auto ego_proj = reference_line.GetProjection(data_frame_->state.position);
     for (int i = 0; i < virtual_obstacles_.size(); ++i) {
       auto obs_proj = reference_line.GetProjection(virtual_obstacles_[i]);
+       // 如果障碍物在车辆前方5米内,保留
       if (ego_proj.s - obs_proj.s <= 5) {
         valid_obstacle_index.insert(i);
       }
@@ -264,6 +276,7 @@ void NavigationMap::UpdateVirtualObstacles() {
   }
   virtual_obstacles_ = remaining_obstacles;
 
+  // 计算新障碍物的位置
   if (add_virtual_obstacles_) {
     static double sign = 1.0;
     const auto& target_lane = reference_lines_.front();
@@ -271,17 +284,113 @@ void NavigationMap::UpdateVirtualObstacles() {
         virtual_obstacles_.empty()
             ? target_lane.GetProjection(data_frame_->state.position)
             : target_lane.GetProjection(virtual_obstacles_.back());
-    double obs_s = proj.s + 50;
-    double obs_d = sign * 0.6;
+      
+    // 打印投影点信息
+      LOG(INFO) << "Adding new obstacles:"
+              << "\nProjection on reference line - s: " << proj.s << ", d: " << proj.d;
+
+    // 在车道中心线左右各偏移0.6米放置障碍物
+    double obs_s = proj.s + 40; // 在当前位置前方50米
+    double obs_d = sign * 0.6;  // 左右偏移0.6米
     sign = -sign;
+    //  LOG(INFO) << "Placing obstacle at s: " << obs_s << ", d: " << obs_d;
+
+    // 生成新的障碍物
     Eigen::Vector2d obs_pos;
     for (int i = 0; i < add_num_; ++i) {
       target_lane.FrenetToCartesion(obs_s + 1.5 * i, obs_d, &obs_pos);
+      LOG(INFO) << "Obstacle " << i << ":"
+                << "\n  Frenet - s: " << obs_s + 1.5 * i << ", d: " << obs_d
+                << "\n  Cartesian: " << obs_pos.transpose();
       virtual_obstacles_.emplace_back(obs_pos);
     }
     add_virtual_obstacles_ = false;
   }
+
+  LOG(INFO) << "Total obstacles after update: " << virtual_obstacles_.size();
+  LOG(INFO) << "================== Virtual Obstacles Update End ==================\n";
+
+  // 在virtual_obstacles更新完成后,更新静态障碍物不确定性
+  UpdateStaticObstacleUncertainty();
+
   PublishVirtualObstacles();
+}
+
+// 添加新的静态障碍物不确定性更新方法
+void NavigationMap::UpdateStaticObstacleUncertainty() {
+
+LOG(INFO) << "=== Updating static obstacle uncertainty ===";
+  
+  
+  if (!uncertainty_estimator_) {
+   
+    return;
+  }
+  
+  if (!data_frame_) {
+   
+    return;
+  }
+
+  
+
+  // 添加边界检查
+  constexpr double kMaxPositionVar = 4.0;  // 最大位置方差
+  constexpr double kMaxHeadingVar = 0.5;   // 最大朝向方差
+  constexpr double kMaxSizeVar = 1.0;      // 最大尺寸方差
+
+  if (!uncertainty_estimator_ || !data_frame_) return;
+
+  // 重置静态障碍物不确定性
+  static_obstacle_uncertainty_ = PerceptionUncertainty();
+
+  if (virtual_obstacles_.empty()) return;
+
+  // 为所有虚拟障碍物计算总体不确定性
+  for (const auto& obs_pos : virtual_obstacles_) {
+
+    // 创建临时障碍物对象用于不确定性估计
+    Obstacle temp_obstacle;
+    temp_obstacle.mutable_state()->position = obs_pos;
+
+    // 打印原始位置
+    LOG(INFO) << "Original obstacle position: " << obs_pos.transpose();
+
+    // 设置临时障碍物的朝向(假设与参考线平行)
+    const auto& ref_line = reference_lines_.front();
+    auto proj = ref_line.GetProjection(obs_pos);
+    temp_obstacle.mutable_state()->heading = ref_line.GetHeading(proj.s);
+    
+    // 估计不确定性
+    const_cast<UncertaintyEstimator*>(uncertainty_estimator_)->
+        EstimateObstacleUncertainty(data_frame_->state, &temp_obstacle);
+
+    // 累积不确定性(选择最大值)
+    const auto& curr_uncertainty = temp_obstacle.perception_uncertainty();
+
+    
+    // 更新位置协方差
+    static_obstacle_uncertainty_.position_covariance = 
+    curr_uncertainty.position_covariance.cwiseMin(
+      Eigen::Matrix2d::Identity() * kMaxPositionVar
+    );
+    
+    // 更新朝向方差
+    static_obstacle_uncertainty_.heading_variance = 
+      std::min(curr_uncertainty.heading_variance, kMaxHeadingVar);
+    
+    // 更新几何尺寸不确定性
+    static_obstacle_uncertainty_.length_variance = 
+    std::min(curr_uncertainty.length_variance, kMaxSizeVar);
+    static_obstacle_uncertainty_.width_variance = 
+    std::min(curr_uncertainty.width_variance, kMaxSizeVar);
+
+    // 打印不确定性信息
+    LOG(INFO) << "Position covariance:\n" << static_obstacle_uncertainty_.position_covariance;
+    LOG(INFO) << "Heading variance: " << static_obstacle_uncertainty_.heading_variance;
+    
+
+  }
 }
 
 bool NavigationMap::SelectRouteSequence(const common::State& state) {

@@ -118,11 +118,13 @@ void LmpcOsqpSolver::CaculateBounds() {
 }
 
 bool LmpcOsqpSolver::Solve(std::vector<double> *control) {
+  // 1. 计算各矩阵
   CaculateConstrains();
   CaculateHessian();
   CaculateGradient();
   CaculateBounds();
 
+  // 2. 设置OSQP参数
   OSQPSettings *settings =
       reinterpret_cast<OSQPSettings *>(c_malloc(sizeof(OSQPSettings)));
   osqp_set_default_settings(settings);
@@ -132,6 +134,7 @@ bool LmpcOsqpSolver::Solve(std::vector<double> *control) {
   settings->eps_abs = eps_abs_;
   settings->verbose = false;
 
+  // 3. 构造OSQP数据
   OSQPData *data = reinterpret_cast<OSQPData *>(c_malloc(sizeof(OSQPData)));
   Eigen::MatrixXd P = hessian_.triangularView<Eigen::Upper>();
   std::vector<c_float> P_data;
@@ -155,6 +158,8 @@ bool LmpcOsqpSolver::Solve(std::vector<double> *control) {
   data->u = upperbound_.data();
 
   c_int exitflag = 0;
+
+  // 4. 求解
   OSQPWorkspace *workspace;
   exitflag = osqp_setup(&workspace, data, settings);
   osqp_solve(workspace);
@@ -173,7 +178,8 @@ bool LmpcOsqpSolver::Solve(std::vector<double> *control) {
     LOG(ERROR) << "The Hessian matrix is not semi-positive defined";
     problem_solved = false;
   }
-
+  
+  // 5. 提取结果
   control->clear();
   for (int i = 0; i < nu_; ++i) {
     control->emplace_back(workspace->solution->x[nx_ * (horizon_ + 1) + i]);

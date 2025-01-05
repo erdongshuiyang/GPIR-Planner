@@ -218,6 +218,7 @@ void PlanningCore::Run(const ros::TimerEvent&) {
   TIC;
   planner_->PlanOnce(&navigation_map_);
   TOC("PlaneOnce");
+  // 规划完成后,通过simulator传递轨迹
   simulator_->SetTrajectory(navigation_map_.trajectory());
 }
 

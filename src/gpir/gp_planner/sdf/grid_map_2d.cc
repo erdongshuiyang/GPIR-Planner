@@ -11,13 +11,17 @@ namespace planning {
 
 template <typename T>
 void GridMap2D<T>::FillCircle(const Eigen::Vector2d& center, double radius) {
+  // 将grid_map数据转换为OpenCV格式
   cv::Mat grid_mat(cell_num_[1], cell_num_[0],
                    CV_MAKETYPE(cv::DataType<T>::type, 1), map_data_.data());
 
+   // 将连续坐标转换为栅格索引
   Eigen::Vector2i index;
   Coordinate2Index(center, &index);
 
+  // 计算栅格空间中的半径
   int grid_radius = radius * cell_resolution_inv_[0];
+  // 使用OpenCV的circle函数填充障碍物
   cv::Point2i cv_center(index(0), index(1));
   cv::circle(grid_mat, cv_center, grid_radius, cv::Scalar(1), -1);
 }

@@ -139,14 +139,22 @@ bool GPPlanner::PlanWithGPIR(
   timer.Start();
   OccupancyMap occupancy_map({0, -5}, {std::ceil(length / 0.1) + 100, 100},
                              {0.1, 0.1});
+  // OccupancyMap occupancy_map(
+  //   {0, -250},           // 扩大原点范围
+  //   {1500, 500},        // 扩大地图尺寸
+  //   {0.1, 0.1});
 
   std::vector<double> obstacle_location_hint;
   for (const auto& point : virtual_obstacles) {
-    auto proj = reference_line.GetProjection(point);
-    occupancy_map.FillCircle(Eigen::Vector2d(proj.s, proj.d), 0.2);
+    // 将障碍物从笛卡尔坐标系投影到参考线上的Frenet坐标系
+    auto proj = reference_line.GetProjection(point); // 得到(s,d)坐标
+    occupancy_map.FillCircle(Eigen::Vector2d(proj.s, proj.d), 0.2); // FillCircle将障碍物表示为圆形，填充到栅格地图中
+    // 记录障碍物在参考线上的s坐标(用于后续路径规划)
     obstacle_location_hint.emplace_back(proj.s);
   }
+  // 1. 创建SDF对象
   auto sdf = std::make_shared<SignedDistanceField2D>(std::move(occupancy_map));
+  // 2. 计算SDF
   sdf->UpdateSDF();
   time_consuption_.sdf = timer.EndThenReset();
 
@@ -163,6 +171,18 @@ bool GPPlanner::PlanWithGPIR(
 
   GPPath gp_path;
   GPIncrementalPathPlanner gp_path_planner(sdf);
+
+   // 在更新不确定性之前输出日志
+   LOG(INFO) << "Before setting uncertainty to planner";
+   LOG(INFO) << "Static obstacle uncertainty:\n" 
+              << static_obstacle_uncertainty_.position_covariance;
+
+   // 将不确定性传递给路径规划器
+  gp_path_planner.SetStaticObstacleUncertainty(static_obstacle_uncertainty_);
+
+  // 设置后再次输出
+  LOG(INFO) << "After setting uncertainty to planner ";
+
   if (!gp_path_planner.GenerateInitialGPPath(reference_line, frenet_state, 100,
                                              obstacle_location_hint,
                                              dynamic_agents, 

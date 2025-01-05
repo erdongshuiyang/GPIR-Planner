@@ -35,11 +35,17 @@ void UncertaintyEstimator::Init(const ros::NodeHandle& nh) {
   // 加载几何尺寸不确定性参数
   nh.param(prefix + "size_uncertainty_base", size_uncertainty_base_, 0.05);
   nh.param(prefix + "size_uncertainty_rate", size_uncertainty_rate_, 0.01);
+
+  LOG(INFO) << "UncertaintyEstimator initialized with:"
+            << "\nbase_position_std: " << base_position_std_
+            << "\nposition_growth_rate: " << position_growth_rate_;
+
+             
 }
 
 void UncertaintyEstimator::EstimateObstacleUncertainty(
     const common::State& ego_state,
-    Obstacle* obstacle) {
+    Obstacle* obstacle) const {
   const auto& obs_state = obstacle->state();
   
   // 计算相对位置和距离
@@ -150,6 +156,7 @@ void PlanningCore::Init() {
 
   // 初始化不确定性估计器
   uncertainty_estimator_.Init(nh);
+  navigation_map_.SetUncertaintyEstimator(&uncertainty_estimator_);
 }
 
 void PlanningCore::Run(const ros::TimerEvent&) {
@@ -197,6 +204,17 @@ void PlanningCore::Run(const ros::TimerEvent&) {
   }
 
   navigation_map_.UpdateReferenceLine();
+
+  LOG(INFO) << "================== Planning cycle start ==================";
+  LOG(INFO) << "Navigation map uncertainty:\n" 
+              << navigation_map_.static_obstacle_uncertainty().position_covariance;
+
+  // 在规划前更新静态障碍物不确定性
+  planner_->SetStaticObstacleUncertainty(
+      navigation_map_.static_obstacle_uncertainty());
+  
+  LOG(INFO) << "Uncertainty passed to planner";
+
   TIC;
   planner_->PlanOnce(&navigation_map_);
   TOC("PlaneOnce");

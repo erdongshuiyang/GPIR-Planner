@@ -69,6 +69,11 @@ class ReferenceLine {
 
   void print();
 
+  // 获取指定弧长位置的朝向角
+  double GetHeading(const double s) const {
+    return spline_.theta(s);  // 直接使用样条曲线的theta方法
+  }
+
  protected:
   void GetFrenetPoint(const Eigen::Vector2d& pos, const double s,
                       common::FrenetPoint* frenet_point) const;

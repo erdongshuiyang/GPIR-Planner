@@ -102,12 +102,19 @@ class SignedDistanceField2D {
       std::array<int, 2> dim,
       std::function<bool(const int x, const int y)> is_occupied,
       DistanceMap* output_map);
-
+  
+  // 获取静态障碍物位置列表
+  const std::vector<Eigen::Vector2d>& static_obstacle_positions() const {
+    return static_obstacle_positions_;
+  }
  private:
   double map_resolution_;
 
   OccupancyMap occupancy_map_;
   DistanceMap esdf_;
+
+  // 存储静态障碍物位置
+  std::vector<Eigen::Vector2d> static_obstacle_positions_;
 };
 
 // inline function
@@ -127,4 +134,4 @@ inline void SignedDistanceField2D::set_cell_num(std::array<int, 2> cell_num) {
   occupancy_map_.set_cell_number(cell_num);
   esdf_.set_cell_number(cell_num);
 }
-}  // namespace planning
+}  // namespace planning根据编译错误，修改那些位置，同时再给你补充一些已经修改过的代码。

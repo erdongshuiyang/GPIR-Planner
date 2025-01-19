@@ -17,6 +17,10 @@
 #include "planning_core/planning_common/perception_uncertainty.h"
 #include "planning_core/planning_common/obstacle.h"  // 添加这行
 
+#include "planning_core/planning_common/control_uncertainty_model.h"
+
+
+
 namespace planning {
 
 class GPIncrementalPathPlanner {
@@ -72,6 +76,11 @@ class GPIncrementalPathPlanner {
     enable_incremental_refinemnt_ = option;
   }
 
+   // 添加更新控制不确定性的接口
+  void UpdateControlUncertainty(const ControlErrorAnalyzer& analyzer) {
+    control_uncertainty_model_.UpdateFromAnalyzer(analyzer);
+  }
+
  protected:
   bool DecideInitialPathBoundary(
       const Eigen::Vector2d& init_pos, const double init_angle,
@@ -121,6 +130,10 @@ class GPIncrementalPathPlanner {
 
   const ReferenceLine* reference_line_{nullptr}; 
   double kappa_r_{0.0}; 
+
+  // 添加控制不确定性模型成员
+  ControlUncertaintyModel control_uncertainty_model_;
+
 
 };
 }  // namespace planning

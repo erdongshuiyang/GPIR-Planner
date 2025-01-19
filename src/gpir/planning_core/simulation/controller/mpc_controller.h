@@ -16,12 +16,22 @@
 #include "common/base/trajectory.h"
 #include "common/utils/boxcar_filter.h"
 
+#include "common/utils/timer.h"  // 添加Timer头文件
+
+
 namespace planning {
 namespace simulation {
 
 class MpcController {
  public:
   MpcController();
+
+  struct SolverError {
+    double velocity_error{0.0};
+    double steering_error{0.0};
+    double computation_time{0.0};
+     bool status{false};  // 求解状态
+  };
 
   void Init();
 
@@ -30,6 +40,11 @@ class MpcController {
   bool CalculateAckermannDrive(const common::State& state,
                                const common::Trajectory& trajectory,
                                ackermann_msgs::AckermannDrive* control_cmd);
+
+  // 新增:设置求解误差回调
+  void SetSolverErrorCallback(std::function<void(const SolverError&)> callback) {
+    solver_error_callback_ = callback;
+  }
 
  protected:
   void Reset(const common::State& state);
@@ -79,6 +94,18 @@ class MpcController {
 
   std::deque<double> history_vel_;
   std::deque<double> history_steer_;
+
+    // 新增成员
+  std::function<void(const SolverError&)> solver_error_callback_;
+  common::Timer solver_timer_;  // 用于计时
+  
+  // 新增:记录求解状态
+  void RecordSolverPerformance(
+      const common::State& state,
+      const double optimal_speed,
+      const double optimal_steer,
+      bool solve_status);
+
 };
 
 }  // namespace simulation

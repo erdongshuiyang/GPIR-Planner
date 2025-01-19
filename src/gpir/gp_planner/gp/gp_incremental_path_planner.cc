@@ -25,6 +25,8 @@
 #include "gp_planner/gp/factors/gp_perception_uncertainty_factor.h"
 #include "gp_planner/gp/factors/static_obstacle_uncertainty_factor.h"
 
+#include "gp_planner/gp/factors/control_uncertainty_factor.h"
+
 namespace planning {
 
 using common::NormalizeAngle;
@@ -33,7 +35,7 @@ using gtsam::noiseModel::Diagonal;
 using gtsam::noiseModel::Isotropic;
 using PriorFactor3 = gtsam::PriorFactor<Vector3>;
 
-constexpr double kEpsilon = 10;  //1.6
+constexpr double kEpsilon = 1.6;  //1.6
 constexpr double kQc = 0.1;
 
 bool GPIncrementalPathPlanner::DecideInitialPathBoundary(
@@ -152,9 +154,13 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
   // static auto sigma_reference = Diagonal::Sigmas(Vector3(30, 1e9, 1e9));
 
   // 修改初始权重，增加路径稳定性
-  static auto sigma_initial = Isotropic::Sigma(3, 0.01); // 改为0.01
-  static auto sigma_goal = Diagonal::Sigmas(Vector3(2.0, 0.2, 0.2)); // 增大权重
-  static auto sigma_reference = Diagonal::Sigmas(Vector3(300, 1e9, 1e9)); //30
+  // static auto sigma_initial = Isotropic::Sigma(3, 0.01); // 改为0.01
+  // static auto sigma_goal = Diagonal::Sigmas(Vector3(2.0, 0.2, 0.2)); // 增大权重
+  // static auto sigma_reference = Diagonal::Sigmas(Vector3(300, 1e9, 1e9)); //30
+
+  static auto sigma_initial = Isotropic::Sigma(3, 0.001);
+  static auto sigma_goal = Diagonal::Sigmas(Vector3(1, 0.1, 0.1));
+  static auto sigma_reference = Diagonal::Sigmas(Vector3(100, 1e9, 1e9));
 
   interval_ = length / (num_of_nodes_ - 1);
 
@@ -188,6 +194,17 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
 
       graph_.add(GPPriorFactor(last_key, key, interval_, kQc));
 
+      //  在这里添加控制不确定性因子
+      // graph_.add(ControlUncertaintyFactor(
+      //     last_key, key,
+      //     control_uncertainty_model_,
+      //     interval_,
+      //     0.01 // 权重可调
+      // ));
+
+      // LOG(INFO) << "Adding control uncertainty factor between nodes: " 
+      //     << last_key << " -> " << key;
+
       // if (current_s > 0) {
       //   graph_.add(PriorFactor3(key, x_ref, sigma_reference));
       // }
@@ -201,12 +218,12 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
       // 添加静态障碍物不确定性因子
       graph_.add(
         StaticObstacleUncertaintyFactor(key, sdf_, static_obstacle_uncertainty_,
-                                        0.95, kEpsilon, current_s, kappa_r));
+                                        0.1, kEpsilon, current_s, kappa_r));
 
       // graph_.add(
       //     GPObstacleFactor(key, sdf_, 0.1, kEpsilon, current_s, kappa_r));
       if (enable_curvature_constraint_) {
-        graph_.add(GPKappaLimitFactor(key, 0.01, kappa_r, dkappa_r,
+        graph_.add(GPKappaLimitFactor(key, 0.1, kappa_r, dkappa_r,
                                       kappa_limit_, current_s));
       }
 
@@ -254,29 +271,35 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
   double initial_error = graph_.error(init_values);
   LOG(INFO) << "Initial error: " << initial_error;
 
-  // gtsam::LevenbergMarquardtParams param;
-  // param.setlambdaInitial(100.0);
-  // param.setMaxIterations(50);
-  // // param.setAbsoluteErrorTol(5e-4);
-  // // param.setRelativeErrorTol(0.01);
-  // // param.setErrorTol(1.0);
-  // // param.setVerbosity("ERROR");
-
- // 图优化器参数调整 
   gtsam::LevenbergMarquardtParams param;
-  // param.setVerbosityLM("SUMMARY"); // 打印优化过程
-  param.setlambdaInitial(1000.0);  // 增大初始lambda
-  param.setMaxIterations(30);       // 减少最大迭代次数
-  param.setRelativeErrorTol(1e-4);  // 相对误差阈值
-  param.setAbsoluteErrorTol(1e-4);  // 绝对误差阈值
+  param.setlambdaInitial(100.0);
+  param.setMaxIterations(30);
+  // param.setAbsoluteErrorTol(5e-4);
+  // param.setRelativeErrorTol(0.01);
+  // param.setErrorTol(1.0);
+  // param.setVerbosity("ERROR");
+
+//  // 图优化器参数调整 
+//   gtsam::LevenbergMarquardtParams param;
+//   // param.setVerbosityLM("SUMMARY"); // 打印优化过程
+//   param.setlambdaInitial(1000.0);  // 增大初始lambda
+//   param.setMaxIterations(30);       // 减少最大迭代次数
+//   param.setRelativeErrorTol(1e-4);  // 相对误差阈值
+//   param.setAbsoluteErrorTol(1e-4);  // 绝对误差阈值
 
   gtsam::LevenbergMarquardtOptimizer opt(graph_, init_values, param);
   map_result_ = opt.optimize();
 
-  // 打印优化结果
+  // 优化结果分析
   double final_error = graph_.error(map_result_);
   LOG(INFO) << "Final error: " << final_error;
   LOG(INFO) << "Optimization iterations: " << opt.iterations();
+
+  // 分析路径变化程度
+  // for(size_t i = 0; i < map_result_.size(); i++) {
+  //   auto node = map_result_.at<gtsam::Vector3>(gtsam::Symbol('x', i));
+  //   LOG(INFO) << "Node " << i << " Frenet state: " << node.transpose();
+  // }
 
   *gp_path =
       GPPath(num_of_nodes_, start_s, interval_, length, kQc, &reference_line);
@@ -292,20 +315,55 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
     // isam2_ = gtsam::ISAM2(
     //     gtsam::ISAM2Params(gtsam::ISAM2GaussNewtonParams(), 1e-3, 1));
 
-  gtsam::ISAM2Params isam2_params;
-  gtsam::ISAM2GaussNewtonParams gnParams;
-  gnParams.setWildfireThreshold(0.001);
-  isam2_params.optimizationParams = gnParams;
-  isam2_params.relinearizeThreshold = 0.1;
-  isam2_params.relinearizeSkip = 1;
-  isam2_params.enableDetailedResults = true;
-  isam2_params.cacheLinearizedFactors = true;
-  isam2_params.evaluateNonlinearError = true;
-  isam2_params.factorization = gtsam::ISAM2Params::CHOLESKY;
+  // gtsam::ISAM2Params isam2_params;
+  // gtsam::ISAM2GaussNewtonParams gnParams;
+  // gnParams.setWildfireThreshold(0.001);
+  // isam2_params.optimizationParams = gnParams;
+  // isam2_params.relinearizeThreshold = 0.1;
+  // isam2_params.relinearizeSkip = 1;
+  // isam2_params.enableDetailedResults = true;
+  // isam2_params.cacheLinearizedFactors = true;
+  // isam2_params.evaluateNonlinearError = true;
+  // isam2_params.factorization = gtsam::ISAM2Params::CHOLESKY;
  
- isam2_ = gtsam::ISAM2(isam2_params);
-    isam2_.update(graph_, map_result_);
+//  isam2_ = gtsam::ISAM2(isam2_params);
+//     isam2_.update(graph_, map_result_);
     // map_result_ = isam2_.calculateEstimate();
+
+
+    // // init isam2
+    // isam2_ = gtsam::ISAM2(
+    //     gtsam::ISAM2Params(gtsam::ISAM2GaussNewtonParams(), 1e-3, 1));
+    // isam2_.update(graph_, map_result_);
+    // // map_result_ = isam2_.calculateEstimate();
+
+    // 初始化ISAM2参数
+  gtsam::ISAM2Params isam2_params;
+  
+  // 设置GaussNewton参数
+  gtsam::ISAM2GaussNewtonParams gnParams;
+  gnParams.setWildfireThreshold(0.01);  // 增大阈值以减少填充
+  isam2_params.optimizationParams = gnParams;
+
+  // 重线性化相关参数
+  isam2_params.relinearizeThreshold = 0.2;   // 增大重线性化阈值，提高稳定性
+  isam2_params.relinearizeSkip = 2;          // 每隔2次更新重线性化一次
+  
+  // 启用重线性化和误差评估
+  isam2_params.enableRelinearization = true;
+  isam2_params.evaluateNonlinearError = true;
+  
+  // 使用QR分解提高数值稳定性
+  isam2_params.factorization = gtsam::ISAM2Params::QR;
+  
+  // 缓存和性能相关参数
+  isam2_params.cacheLinearizedFactors = true;
+  isam2_params.enableDetailedResults = true;
+  
+  // 创建ISAM2优化器实例并更新
+  isam2_ = gtsam::ISAM2(isam2_params);
+  isam2_.update(graph_, map_result_);
+
   }
 
 
@@ -317,6 +375,92 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
 
   return true;
 }
+
+// bool GPIncrementalPathPlanner::UpdateGPPath(
+//     const ReferenceLine& reference_line,
+//     const vector_Eigen3d& frenet_s,
+//     const std::vector<Obstacle>& obstacles,
+//     GPPath* gp_path) {
+  
+//   // 更新参考线指针
+//   reference_line_ = &reference_line;
+
+//   // 保留上一帧的部分因子
+//   static size_t initial_factor_count_ = graph_.size();
+//   if(!graph_.empty()) {
+//     graph_.resize(initial_factor_count_);
+//   }
+
+//   // 记录上一帧的结果用于连续性约束
+//   gtsam::Values previous_values;
+//   if(!map_result_.empty()) {
+//     previous_values = map_result_;
+//   }
+
+//   // 使用size_t替代int解决signedness警告
+//   for (size_t i = 0; i < frenet_s.size(); ++i) {
+//     int index = std::floor((frenet_s[i](0) - node_locations_.front()) / interval_);
+//     if (index < 0) continue;
+    
+//     gtsam::Symbol begin_node('x', index), end_node('x', index + 1);
+
+//     // 添加与上一帧结果的先验约束
+//     if (!previous_values.empty() && previous_values.exists(end_node)) {
+//       Vector3 previous_value = previous_values.at<Vector3>(end_node);
+//       graph_.add(PriorFactor3(end_node, previous_value, 
+//           gtsam::noiseModel::Isotropic::Sigma(3, 0.1)));
+//     }
+
+//     // 添加横向加速度约束
+//     graph_.add(GPLatAccLimitFactor(
+//         begin_node, end_node, 
+//         kQc, 
+//         interval_,
+//         frenet_s[i](0) - node_locations_[index],
+//         frenet_s[i](1), 
+//         frenet_s[i](2), 
+//         2.5,  // 加速度限制
+//         0.2   // 权重
+//     ));
+
+//     // 添加控制不确定性约束
+//     // graph_.add(ControlUncertaintyFactor(
+//     //     begin_node, 
+//     //     end_node,
+//     //     control_uncertainty_model_,
+//     //     interval_,
+//     //     0.01  // 权重
+//     // ));
+
+//     // 添加静态障碍物不确定性约束
+//     // double current_s = node_locations_[index + 1];
+//     // double kappa_r, dkappa_r;
+//     // reference_line.GetCurvature(current_s, &kappa_r, &dkappa_r);
+    
+//     // graph_.add(
+//     //     StaticObstacleUncertaintyFactor(
+//     //         end_node, 
+//     //         sdf_, 
+//     //         static_obstacle_uncertainty_,
+//     //         0.1,  // 权重
+//     //         kEpsilon, 
+//     //         current_s, 
+//     //         kappa_r
+//     //     )
+//     // );
+//   }
+
+//   // 使用正确的ISAM2UpdateParams写法
+//   gtsam::ISAM2UpdateParams update_params;
+//   // update_params直接使用默认值，不需要额外设置
+  
+//   // 增量更新ISAM2
+//   isam2_.update(graph_, gtsam::Values(), update_params);
+//   map_result_ = isam2_.calculateEstimate();
+//   gp_path->UpdateNodes(map_result_);
+
+//   return true;
+// }
 
 bool GPIncrementalPathPlanner::UpdateGPPath(const ReferenceLine& reference_line,
                                             const vector_Eigen3d& frenet_s,
@@ -334,18 +478,25 @@ bool GPIncrementalPathPlanner::UpdateGPPath(const ReferenceLine& reference_line,
     graph_.add(GPLatAccLimitFactor(begin_node, end_node, kQc, interval_,
                                    frenet_s[i](0) - node_locations_[index],
                                    frenet_s[i](1), frenet_s[i](2), 2.5, 0.1));
+    
+    // graph_.add(ControlUncertaintyFactor(
+    //     begin_node, end_node,
+    //     control_uncertainty_model_,
+    //     interval_,
+    //     0.1  // 权重可调
+    // ));
 
     // // 添加不确定性因子
     // AddUncertaintyFactors(obstacles, node_locations_[index + 1], end_node);
 
     // 添加静态障碍物不确定性因子
-    // double current_s = node_locations_[index + 1];
-    // double kappa_r, dkappa_r;
-    // reference_line.GetCurvature(current_s, &kappa_r, &dkappa_r);
+    double current_s = node_locations_[index + 1];
+    double kappa_r, dkappa_r;
+    reference_line.GetCurvature(current_s, &kappa_r, &dkappa_r);
     
-    // graph_.add(
-    //     StaticObstacleUncertaintyFactor(end_node, sdf_, static_obstacle_uncertainty_,
-    //                                    0.1, kEpsilon, current_s, kappa_r));
+    graph_.add(
+        StaticObstacleUncertaintyFactor(end_node, sdf_, static_obstacle_uncertainty_,
+                                       0.1, kEpsilon, current_s, kappa_r));
   }
   isam2_.update(graph_);
   map_result_ = isam2_.calculateEstimate();
@@ -360,56 +511,6 @@ bool GPIncrementalPathPlanner::UpdateGPPath(const ReferenceLine& reference_line,
   return true;
 }
 
-
-// bool GPIncrementalPathPlanner::UpdateGPPath(
-//     const ReferenceLine& reference_line,
-//     const vector_Eigen3d& frenet_s,
-//     const std::vector<Obstacle>& obstacles,  
-//     GPPath* gp_path) {
-
-//   reference_line_ = &reference_line;
-
-//   // 限制每次更新的最大状态数
-//   const int kMaxUpdates = 5;
-//   int update_count = 0;
-
-//   for (int i = 0; i < frenet_s.size() && update_count < kMaxUpdates; ++i) {
-//     int index = std::floor((frenet_s[i](0) - node_locations_.front()) / interval_);
-//     if (index < 0) continue;
-    
-//     // 添加增量优化保护
-//     if (index >= num_of_nodes_ - 1) continue;
-
-//     gtsam::Symbol begin_node('x', index), end_node('x', index + 1);
-    
-//     // 添加横向加速度约束
-//     graph_.add(GPLatAccLimitFactor(begin_node, end_node, kQc, interval_,
-//                                    frenet_s[i](0) - node_locations_[index],
-//                                    frenet_s[i](1), frenet_s[i](2), 2.5, 0.1));
-
-//     // 添加静态障碍物不确定性因子
-//     double current_s = node_locations_[index + 1];
-//     double kappa_r, dkappa_r;
-//     reference_line.GetCurvature(current_s, &kappa_r, &dkappa_r);
-    
-//     graph_.add(
-//         StaticObstacleUncertaintyFactor(end_node, sdf_, static_obstacle_uncertainty_,
-//                                        0.1, kEpsilon, current_s, kappa_r));
-    
-//     update_count++;
-//   }
-
-//   // 增量优化参数调整
-//   gtsam::ISAM2Params update_params;
-//   update_params.relinearizeThreshold = 0.1;
-//   update_params.relinearizeSkip = 1;
-  
-//   isam2_.update(graph_, gtsam::ISAM2UpdateParams(update_params));
-//   map_result_ = isam2_.calculateEstimate();
-//   gp_path->UpdateNodes(map_result_);
-
-//   return true;
-// }
 
 bool GPIncrementalPathPlanner::UpdateGPPathNonIncremental(
     const ReferenceLine& reference_line, const vector_Eigen3d& frenet_s,
@@ -427,6 +528,13 @@ bool GPIncrementalPathPlanner::UpdateGPPathNonIncremental(
     graph_.add(GPLatAccLimitFactor(begin_node, end_node, kQc, interval_,
                                    frenet_s[i](0) - node_locations_[index],
                                    frenet_s[i](1), frenet_s[i](2), 2.5, 0.1));
+    
+    // graph_.add(ControlUncertaintyFactor(
+    //   begin_node, end_node,
+    //   control_uncertainty_model_,
+    //   interval_,
+    //   0.1  // 权重可调
+    // ));
     // // 添加不确定性因子
     // AddUncertaintyFactors(obstacles, node_locations_[index + 1], end_node);
 

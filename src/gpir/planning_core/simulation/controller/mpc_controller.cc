@@ -12,6 +12,7 @@
 #include "common/utils/math.h"
 #include "planning_core/simulation/controller/lmpc_osqp_solver.h"
 
+
 namespace planning {
 namespace simulation {
 
@@ -64,6 +65,10 @@ void MpcController::Init() {
 bool MpcController::CalculateAckermannDrive(
     const common::State& state, const common::Trajectory& trajectory,
     ackermann_msgs::AckermannDrive* control_cmd) {
+
+  // 开始计时
+  solver_timer_.Start();    
+
   if (trajectory.empty()) {
     LOG_EVERY_N(WARNING, 20) << "trajectory is empty";
     Reset(state);
@@ -148,7 +153,8 @@ bool MpcController::CalculateAckermannDrive(
       matrix_ref, horizon_, 2000, 1e-6);
 
   // 6. 求解最优控制
-  if (!lmpc_solver.Solve(&optimal_control)) {
+  bool solve_status = lmpc_solver.Solve(&optimal_control);
+  if (!solve_status) {
     SetStopCommand(control_cmd);
     return false;
   }
@@ -158,6 +164,9 @@ bool MpcController::CalculateAckermannDrive(
   double optimal_accel = optimal_control[0];
   double optimal_steer = last_control_[1] + optimal_control[1];
   double optimal_steer_rate = optimal_control[1];
+
+  // 记录求解性能
+  RecordSolverPerformance(state, optimal_speed, optimal_steer, solve_status);
 
   // 8. 转换为Ackermann消息
   control_cmd->acceleration = optimal_control[0] / ts_;
@@ -209,5 +218,28 @@ void MpcController::SetStopCommand(
   control_cmd->steering_angle = 0.0;
   control_cmd->steering_angle_velocity = 0.0;
 }
+
+void MpcController::RecordSolverPerformance(
+    const common::State& state,
+    const double optimal_speed,
+    const double optimal_steer,
+    bool solve_status) {
+  
+  SolverError error;
+  
+  // 计算求解误差
+  error.velocity_error = state.velocity - optimal_speed;
+  error.steering_error = state.steer - optimal_steer;
+  
+  // 记录求解性能
+  error.computation_time = solver_timer_.End();
+  error.status = solve_status;
+  
+  // 回调通知
+  if (solver_error_callback_) {
+    solver_error_callback_(error);
+  }
+}
+
 }  // namespace simulation
 }  // namespace planning

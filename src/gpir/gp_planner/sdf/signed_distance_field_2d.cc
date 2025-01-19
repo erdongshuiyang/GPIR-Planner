@@ -278,8 +278,8 @@ void SignedDistanceField2D::UpdateSDF() {
         occupancy_map_.Index2Coordinate(Eigen::Vector2i(x, y), &coord);
         static_obstacle_positions_.push_back(coord);
         occupied_cells++;
-        LOG(INFO) << "Found occupied cell at grid (" << x << "," << y 
-                  << ") -> world: " << coord.transpose();
+        // LOG(INFO) << "Found occupied cell at grid (" << x << "," << y 
+        //           << ") -> world: " << coord.transpose();
       }
     }
   }

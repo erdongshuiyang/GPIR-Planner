@@ -331,7 +331,7 @@ bool StGraph::IsTrajectoryFeasible(const GPPath& gp_path,
     gp_path.GetInterpolateNode(s(0), &d);
     lat_acc = d(2) * s(1) * s(1) + d(1) * s(2);
     if (std::fabs(lat_acc) > 1.05 * lat_a_max_) {
-      printf("invalid at %f, acc: %f\n", t, lat_acc);
+      // printf("invalid at %f, acc: %f\n", t, lat_acc);
       frenet_s->emplace_back(s);
     }
   }

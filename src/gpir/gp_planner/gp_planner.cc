@@ -202,14 +202,17 @@ bool GPPlanner::PlanWithGPIR(
   time_consuption_.init_path = timer.EndThenReset();
 
   reference_line.ToFrenetState(ego_state, &frenet_state);
+  // 速度规划初始化
   StGraph st_graph(frenet_state.s);
   st_graph.SetReferenceSpeed(reference_speed_);
+  // 构建ST图
   st_graph.BuildStGraph(cirtical_agents, gp_path);
+  // 速度搜索
   if (!st_graph.SearchWithLocalTruncation(13, nullptr)) {
     LOG(ERROR) << "[StGraph]: fail to find initial speed profile";
     return false;
   }
-
+  // 速度优化
   if (!st_graph.GenerateInitialSpeedProfile(gp_path)) {
     LOG(ERROR) << "[StGraph]: fail to optimize inital speed profile";
     return false;
@@ -218,6 +221,7 @@ bool GPPlanner::PlanWithGPIR(
 
   int iter_count = 0;
   vector_Eigen3d invalid_lat_frenet_s;
+  // 可行性检查与迭代优化
   while (trajectory_index_ < 1 &&
          !st_graph.IsTrajectoryFeasible(gp_path, &invalid_lat_frenet_s)) {
     gp_path_planner.UpdateGPPath(reference_line, invalid_lat_frenet_s, dynamic_agents, 
@@ -254,6 +258,7 @@ bool GPPlanner::PlanWithGPIR(
   // 直接调用SaveToCSV，让类内部处理文件名生成
   // PlanningDataCollector::SaveToCSV(all_planning_data);
 
+  // 生成最终轨迹
   st_graph.GenerateTrajectory(reference_line, gp_path, trajectory);
 
   // 在最终轨迹生成后发布一次数据

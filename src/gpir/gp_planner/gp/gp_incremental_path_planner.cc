@@ -195,12 +195,12 @@ bool GPIncrementalPathPlanner::GenerateInitialGPPath(
       graph_.add(GPPriorFactor(last_key, key, interval_, kQc));
 
       //  在这里添加控制不确定性因子
-      // graph_.add(ControlUncertaintyFactor(
-      //     last_key, key,
-      //     control_uncertainty_model_,
-      //     interval_,
-      //     0.01 // 权重可调
-      // ));
+      graph_.add(ControlUncertaintyFactor(
+          last_key, key,
+          control_uncertainty_model_,
+          interval_,
+          0.01 // 权重可调
+      ));
 
       // LOG(INFO) << "Adding control uncertainty factor between nodes: " 
       //     << last_key << " -> " << key;
@@ -479,12 +479,12 @@ bool GPIncrementalPathPlanner::UpdateGPPath(const ReferenceLine& reference_line,
                                    frenet_s[i](0) - node_locations_[index],
                                    frenet_s[i](1), frenet_s[i](2), 2.5, 0.1));
     
-    // graph_.add(ControlUncertaintyFactor(
-    //     begin_node, end_node,
-    //     control_uncertainty_model_,
-    //     interval_,
-    //     0.1  // 权重可调
-    // ));
+    graph_.add(ControlUncertaintyFactor(
+        begin_node, end_node,
+        control_uncertainty_model_,
+        interval_,
+        0.01  // 权重可调
+    ));
 
     // // 添加不确定性因子
     // AddUncertaintyFactors(obstacles, node_locations_[index + 1], end_node);

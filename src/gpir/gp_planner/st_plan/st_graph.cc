@@ -30,12 +30,14 @@ void StGraph::BuildStGraph(const std::vector<Obstacle>& dynamic_obstacles,
   omp_set_num_threads(size);
   {
 #pragma omp parallel for
+  // 1.1 计算每个动态障碍物的ST阻塞区域
     for (int i = 0; i < size; ++i) {
       GetObstacleBlockSegment(dynamic_obstacles[i], gp_path,
                               &st_block_segments_[i]);
     }
   }
 
+  // 1.2 构建占用栅格地图
   OccupancyMap grid_map;
   grid_map.set_origin({0.0, init_s_[0]});
   grid_map.set_resolution({0.1, 0.1});
@@ -44,6 +46,7 @@ void StGraph::BuildStGraph(const std::vector<Obstacle>& dynamic_obstacles,
   vector_Eigen<Eigen::Vector2d> corners;
   corners.resize(4);
 
+  // 1.3 填充ST阻塞区域
   for (const auto& st_block_segment : st_block_segments_) {
     if (st_block_segment.empty()) continue;
     for (const auto& st_points : st_block_segment) {
@@ -66,6 +69,7 @@ void StGraph::BuildStGraph(const std::vector<Obstacle>& dynamic_obstacles,
     }
   }
 
+  // 1.4 生成SDF场
   sdf_ = std::make_unique<SignedDistanceField2D>(std::move(grid_map));
   sdf_->UpdateVerticalSDF();
 
@@ -107,7 +111,8 @@ bool StGraph::SearchWithLocalTruncation(const int k,
   CHECK(k % 2 == 1) << "k needs to be an odd number, while k is " << k;
 
   int num_a_per_side = static_cast<int>(k / 2.0);
-  std::vector<double> discrete_a;
+  // 2.1 初始化搜索参数
+  std::vector<double> discrete_a; // 离散加速度集合
   discrete_a.reserve(k);
   discrete_a.emplace_back(0.0);
   for (int i = 0; i < num_a_per_side; ++i) {
@@ -115,14 +120,17 @@ bool StGraph::SearchWithLocalTruncation(const int k,
     discrete_a.emplace_back(a_min_ * (i + 1) / num_a_per_side);
   }
 
-  StNodeWeights weight;
+  StNodeWeights weight; // 代价权重
   // weight.control = 0.5;
-  weight.obstacle = 10;
-  weight.ref_v = 3;
+  weight.obstacle = 10;   // 障碍物代价权重
+  weight.ref_v = 3;       // 参考速度代价权重
   StNode::SetWeights(weight);
 
+  //  初始化根节点
   std::unique_ptr<StNode> inital_node =
       std::make_unique<StNode>(init_s_[0], init_s_[1], init_s_[2]);
+  
+  // 搜索树初始化
   search_tree_.resize(9);
   search_tree_[0].emplace_back(std::move(inital_node));
 
@@ -136,23 +144,31 @@ bool StGraph::SearchWithLocalTruncation(const int k,
   double t_compare = 0.0;
   double kEpsilon = 0.1;
 
+  // 2.2 按层扩展搜索(8层)
   for (int i = 0; i < 8; ++i) {
     std::vector<std::unique_ptr<StNode>> cache;
 
+    // 2.2.1 节点扩展
     for (int j = 0; j < search_tree_[i].size(); ++j) {
       for (const auto& a : discrete_a) {
+        // 向前扩展1秒
         auto next_node = search_tree_[i][j]->Forward(1.0, a);
+        // 速度约束检查
         if (next_node->v < 0) continue;  // TODO: can optimize
         for (int k = 1; k <= 5; ++k) {
+          // 计算障碍物代价(采样5个点检查碰撞)
           next_node->CalObstacleCost(sdf_->SignedDistance(
               Eigen::Vector2d(search_tree_[i][j]->t + k / 5.0,
                               search_tree_[i][j]->GetDistance(k / 5.0, a))));
         }
+        // 代价阈值过滤
         if (next_node->cost < 1e9) {
           cache.emplace_back(std::move(next_node));
         }
       }
     }
+    // 2.2.2 基于s坐标排序
+    // 2. 局部截断处理
     std::sort(cache.begin(), cache.end(),
               [](const std::unique_ptr<StNode>& n1,
                  const std::unique_ptr<StNode>& n2) { return n1->s < n2->s; });
@@ -168,8 +184,10 @@ bool StGraph::SearchWithLocalTruncation(const int k,
     double start_s = cache[0]->s;
     bool is_new_group = false;
 
+    // 在相近s值范围内只保留代价最小的节点
     for (int j = 0; j < cache.size(); ++j) {
       if (cache[j]->s - start_s <= kEpsilon) {
+         // 选择代价最小节点
         if (cache[j]->cost < min_cost) {
           min_cost = cache[j]->cost;
           min_index = j;
@@ -185,9 +203,10 @@ bool StGraph::SearchWithLocalTruncation(const int k,
         is_new_group = false;
       }
     }
-
+    // 2.2.4 动态调整截断阈值
     kEpsilon *= 1.3;
   }
+  // 1. 选择终点代价最小的路径
   std::sort(
       search_tree_.back().begin(), search_tree_.back().end(),
       [](const std::unique_ptr<StNode>& n1, const std::unique_ptr<StNode>& n2) {
@@ -195,6 +214,7 @@ bool StGraph::SearchWithLocalTruncation(const int k,
       });
 
   // extract answer
+  // 2. 回溯构建路径
   const StNode* current_node = search_tree_.back().front().get();
   st_nodes_.emplace_back(*current_node);
   while (current_node->parent != nullptr) {
@@ -212,6 +232,7 @@ bool StGraph::GenerateInitialSpeedProfile(const GPPath& gp_path) {
   std::vector<double> refs;
   double lb, ub;
   const auto& grid_map = sdf_->occupancy_map();
+  // 3.1 提取ST边界约束
   for (const auto& node : st_nodes_) {
     t_knots_.emplace_back(node.t);
     grid_map.FindVerticalBoundary(node.t, node.s, &lb, &ub);
@@ -236,12 +257,17 @@ bool StGraph::GenerateInitialSpeedProfile(const GPPath& gp_path) {
     a_max.emplace_back(a_max_);
   }
 
+  // 3.2 构建OSQP问题
   common::OsqpSpline1dSolver solver(t_knots_, 5);
+
+  // 3.3 添加优化目标
   auto kernel = solver.mutable_kernel();
   kernel->AddRegularization(1e-5);
   kernel->AddSecondOrderDerivativeMatrix(5);
   kernel->AddThirdOrderDerivativeMatrix(20);
   kernel->AddReferenceLineKernelMatrix(t_knots_, refs, 20);
+
+  // 3.4 添加约束条件
   auto constraint = solver.mutable_constraint();
   constraint->AddThirdDerivativeSmoothConstraint();
   constraint->AddPointConstraint(t_knots_.front(), init_s_[0]);
@@ -252,6 +278,7 @@ bool StGraph::GenerateInitialSpeedProfile(const GPPath& gp_path) {
   // constraint->AddDerivativeBoundary(t_samples, v_min, v_max);
   // constraint->AddSecondDerivativeBoundary(t_samples, a_min, a_max);
 
+  // 3.5 求解优化问题
   if (!solver.Solve()) {
     LOG(ERROR) << "fail to optimize";
     return false;
@@ -346,13 +373,17 @@ void StGraph::GenerateTrajectory(const ReferenceLine& reference_line,
   const double maximum_s = gp_path.MaximumArcLength();
   Eigen::Vector3d d;
   common::State state;
+  // 4.1 采样轨迹点
   for (double t = 0.0; t <= t_final; t += 0.1) {
+    // 4.2 获取纵向状态
     Eigen::Vector3d s(st_spline_(t), st_spline_.Derivative(t),
                       st_spline_.SecondOrderDerivative(t));
+    // 4.3 获取横向状态
     if (s[0] > maximum_s) break;
     gp_path.GetInterpolateNode(s[0], &d);
     auto ref = reference_line.GetFrenetReferncePoint(s[0]);
     auto ref_point = reference_line.GetFrenetReferncePoint(s[0]);
+    // 4.4 Frenet坐标转换
     common::FrenetTransfrom::FrenetStateToState(common::FrenetState(s, d),
                                                 ref_point, &state);
     state.stamp = t;
@@ -365,6 +396,7 @@ void StGraph::GenerateTrajectory(const ReferenceLine& reference_line,
     const double delta_theta = std::atan2(d[1], one_minus_kappa_rd);
     const double cos_delta_theta = std::cos(delta_theta);
     state.frenet_s = s;
+    // 4.5 添加轨迹点
     trajectory->emplace_back(state);
   }
 }

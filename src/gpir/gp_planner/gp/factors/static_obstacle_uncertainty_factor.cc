@@ -52,12 +52,12 @@ double StaticObstacleUncertaintyFactor::computeCollisionProbability(
   normalized_distance = std::clamp(normalized_distance, -10.0, 10.0);
   
   if(normalized_distance > 1.0) {
-    return kMinProb_;
+    return kMinProb_; // 安全区域
   } else if(normalized_distance > 0.0) {
     return kMinProb_ + (kMaxProb_ - kMinProb_) * 
-           std::pow(1.0 - normalized_distance, 3);
+           std::pow(1.0 - normalized_distance, 3); // 过渡区域
   } else {
-    return kMaxProb_ - 0.1 * normalized_distance;  // 线性惩罚
+    return kMaxProb_ - 0.1 * normalized_distance;  // 线性惩罚 // 危险区域
   }
 }
 

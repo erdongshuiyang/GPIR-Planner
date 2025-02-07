@@ -173,15 +173,15 @@ bool GPPlanner::PlanWithGPIR(
   GPIncrementalPathPlanner gp_path_planner(sdf);
 
    // 在更新不确定性之前输出日志
-   LOG(INFO) << "Before setting uncertainty to planner";
-   LOG(INFO) << "Static obstacle uncertainty:\n" 
-              << static_obstacle_uncertainty_.position_covariance;
+  //  LOG(INFO) << "Before setting uncertainty to planner";
+  //  LOG(INFO) << "Static obstacle uncertainty:\n" 
+  //             << static_obstacle_uncertainty_.position_covariance;
 
    // 将不确定性传递给路径规划器
   gp_path_planner.SetStaticObstacleUncertainty(static_obstacle_uncertainty_);
 
   // 设置后再次输出
-  LOG(INFO) << "After setting uncertainty to planner ";
+  // LOG(INFO) << "After setting uncertainty to planner ";
 
   if (!gp_path_planner.GenerateInitialGPPath(reference_line, frenet_state, 100,
                                              obstacle_location_hint,
@@ -208,10 +208,20 @@ bool GPPlanner::PlanWithGPIR(
   // 构建ST图
   st_graph.BuildStGraph(cirtical_agents, gp_path);
   // 速度搜索
+
   if (!st_graph.SearchWithLocalTruncation(13, nullptr)) {
     LOG(ERROR) << "[StGraph]: fail to find initial speed profile";
     return false;
   }
+    
+  // 使用JPS搜索替代原来的SearchWithLocalTruncation 
+  // std::vector<StNode> st_nodes;
+  // if (!st_graph.SearchWithJPS(reference_speed_, &st_nodes)) {
+  //   LOG(ERROR) << "JPS search failed";
+  //   return false;
+  // }
+
+
   // 速度优化
   if (!st_graph.GenerateInitialSpeedProfile(gp_path)) {
     LOG(ERROR) << "[StGraph]: fail to optimize inital speed profile";

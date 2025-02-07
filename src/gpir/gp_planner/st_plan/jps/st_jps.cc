@@ -829,8 +829,8 @@ std::vector<StJpsNodePtr> StJps::GetInterpolatedNodes(
   int num_segments = std::ceil(
       std::max(std::abs(dt), std::abs(ds)) / config_.step_length);
 
-  if (num_segments <= 1) {    
-    return nodes;   
+  if (num_segments <= 1) {
+    return nodes;
   }
 
   // 线性插值

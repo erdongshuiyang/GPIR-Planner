@@ -15,6 +15,9 @@
 #include "gp_planner/st_plan/st_node.h"
 #include "planning_core/planning_common/obstacle.h"
 
+#include "gp_planner/st_plan/jps/st_jps.h"
+
+
 namespace planning {
 
 struct StPoint {
@@ -40,6 +43,9 @@ class StGraph {
   bool TopKSearch(const int k);
 
   bool SearchWithLocalTruncation(const int k, std::vector<StNode>* result);
+
+  // 使用JPS进行搜索
+  bool SearchWithJPS(const double ref_velocity, std::vector<StNode>* result);
 
   bool GenerateInitialSpeedProfile(const GPPath& gp_path);
 
@@ -86,6 +92,18 @@ class StGraph {
   const double step_length_ = 0.2;
   std::vector<double> t_knots_;
   common::Spline1d st_spline_;
+
+   // JPS规划器
+  // std::unique_ptr<StJps> jps_planner_;
+
+   // 改为shared_ptr，避免对齐内存的复杂处理
+  std::shared_ptr<StJps> jps_planner_;
+
+  // 添加对齐操作符
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+  // double refernce_speed_ = 0.0;  // 添加引用速度成员变量
+  // double reference_speed_ = 8.0;  // 添加引用速度成员变量
 };
 
 }  // namespace planning

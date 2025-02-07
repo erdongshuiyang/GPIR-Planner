@@ -197,13 +197,13 @@ void SignedDistanceField2D::VerticalEuclideanDistanceTransform(
 // }
 
 void SignedDistanceField2D::UpdateSDF() {
-  LOG(INFO) << "\n================ SDF Update Start ================";
-  LOG(INFO) << "Map properties:"
-            << "\nOrigin: " << occupancy_map_.origin()[0] << ", " 
-            << occupancy_map_.origin()[1]
-            << "\nResolution: " << map_resolution_
-            << "\nDimensions: " << occupancy_map_.cell_num()[0] << " x " 
-            << occupancy_map_.cell_num()[1];
+  // LOG(INFO) << "\n================ SDF Update Start ================";
+  // LOG(INFO) << "Map properties:"
+  //           << "\nOrigin: " << occupancy_map_.origin()[0] << ", " 
+  //           << occupancy_map_.origin()[1]
+  //           << "\nResolution: " << map_resolution_
+  //           << "\nDimensions: " << occupancy_map_.cell_num()[0] << " x " 
+  //           << occupancy_map_.cell_num()[1];
 
   // 2. 清空地图阶段的日志
   auto dim = occupancy_map_.cell_num();
@@ -268,7 +268,7 @@ void SignedDistanceField2D::UpdateSDF() {
   // }
 
   // 5. 障碍物检测和更新阶段的日志
-  LOG(INFO) << "\n=== Scanning grid for occupied cells ===";
+  // LOG(INFO) << "\n=== Scanning grid for occupied cells ===";
   int occupied_cells = 0;
   // 更新static_obstacle_positions_列表
   for (int x = 0; x < dim[0]; ++x) {
@@ -283,16 +283,16 @@ void SignedDistanceField2D::UpdateSDF() {
       }
     }
   }
-  LOG(INFO) << "Total occupied cells found: " << occupied_cells;
+  // LOG(INFO) << "Total occupied cells found: " << occupied_cells;
 
 
   // 6. 距离场构建阶段的日志
-  LOG(INFO) << "\n=== Building distance fields ===";
+  // LOG(INFO) << "\n=== Building distance fields ===";
   DistanceMap distance_map, inv_distance_map;
   distance_map.ResizeFrom(occupancy_map_);
   inv_distance_map.ResizeFrom(occupancy_map_);
 
-  LOG(INFO) << "Computing EDT for occupied space...";
+  // LOG(INFO) << "Computing EDT for occupied space...";
   // 计算距离场
   EuclideanDistanceTransform(
       dim,
@@ -301,7 +301,7 @@ void SignedDistanceField2D::UpdateSDF() {
       },
       &distance_map);
 
-  LOG(INFO) << "Computing EDT for free space...";
+  // LOG(INFO) << "Computing EDT for free space...";
   EuclideanDistanceTransform(
       dim,
       [this](const int x, const int y) -> bool { 
@@ -310,7 +310,7 @@ void SignedDistanceField2D::UpdateSDF() {
       &inv_distance_map);
 
   // 7. 最终SDF合并阶段的日志
-  LOG(INFO) << "\n=== Merging distance fields into final SDF ===";
+  // LOG(INFO) << "\n=== Merging distance fields into final SDF ===";
   // 合并得到最终的SDF
   auto& esdf_data = *esdf_.mutable_data();
   const auto& dis_map_data = distance_map.data();
@@ -328,15 +328,15 @@ void SignedDistanceField2D::UpdateSDF() {
     }
   }
 
-  LOG(INFO) << "Modified " << modified_cells << " cells in final SDF";
+  // LOG(INFO) << "Modified " << modified_cells << " cells in final SDF";
 
   // 8. 总结信息
-  LOG(INFO) << "\n=== Final Statistics ==="
-            // << "\nTotal obstacles registered: " << registered_obstacles
-            << "\nTotal occupied cells: " << occupied_cells
-            << "\nTotal cells modified in SDF: " << modified_cells;
+  // LOG(INFO) << "\n=== Final Statistics ==="
+  //           // << "\nTotal obstacles registered: " << registered_obstacles
+  //           << "\nTotal occupied cells: " << occupied_cells
+  //           << "\nTotal cells modified in SDF: " << modified_cells;
   
-  LOG(INFO) << "================== SDF Update End ==================\n";
+  // LOG(INFO) << "================== SDF Update End ==================\n";
 }
 
 void SignedDistanceField2D::UpdateVerticalSDF() {

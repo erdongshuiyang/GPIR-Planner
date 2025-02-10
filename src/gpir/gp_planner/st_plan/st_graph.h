@@ -32,7 +32,9 @@ struct StPoint {
 class StGraph {
  public:
   StGraph() = default;
-  StGraph(const Eigen::Vector3d& init_s) : init_s_(init_s) {}
+  // StGraph(const Eigen::Vector3d& init_s) : init_s_(init_s) {}
+
+  explicit StGraph(const Eigen::Vector3d& init_s);
 
   void SetInitialState(const Eigen::Vector3d& init_s) { init_s_ = init_s; }
   void SetReferenceSpeed(const double ref_v) const;
@@ -104,6 +106,29 @@ class StGraph {
 
   // double refernce_speed_ = 0.0;  // 添加引用速度成员变量
   // double reference_speed_ = 8.0;  // 添加引用速度成员变量
+
+    // 添加剪枝配置结构体
+  struct PruningConfig {
+    double max_acceleration = 2.0;     // 最大加速度
+    double max_deceleration = -4.0;    // 最大减速度
+    double max_velocity = 20.0;        // 最大速度
+    double min_velocity = 0.0;         // 最小速度
+    double collision_threshold = 1.0;   // 碰撞阈值
+    double max_cost = 1e5;             // 最大代价阈值
+    int collision_check_steps = 5;      // 碰撞检查步数
+  };
+
+  // 添加新的成员变量
+  PruningConfig pruning_config_;
+  
+  // 添加新的私有方法
+  bool ShouldPruneNode(const StNode* node, double next_acc) const;
+  bool CheckCollision(const StNode* current_node, double acc, 
+                     std::unique_ptr<StNode>& next_node) const;
+
+   // 添加初始化函数声明
+  void InitializePruningConfig();
+
 };
 
 }  // namespace planning

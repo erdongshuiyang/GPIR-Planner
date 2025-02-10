@@ -20,6 +20,68 @@
 
 namespace planning {
 
+// 实现构造函数
+StGraph::StGraph(const Eigen::Vector3d& init_s) : init_s_(init_s) {
+    // 初始化现有成员
+    stamp_now_ = 0.0;
+    ego_half_length_ = 0.0;
+    safety_margin_ = 0.0;
+    
+    // 初始化剪枝配置
+    InitializePruningConfig();
+}
+
+// 实现初始化函数
+void StGraph::InitializePruningConfig() {
+    pruning_config_.max_acceleration = a_max_;
+    pruning_config_.max_deceleration = a_min_;
+    pruning_config_.max_velocity = std::max(20.0, 2.0 * StNode::reference_speed());
+    pruning_config_.min_velocity = 0.0;
+    pruning_config_.collision_threshold = safety_margin_ + 0.2;
+    pruning_config_.max_cost = 1e5;
+    pruning_config_.collision_check_steps = 5;
+}
+bool StGraph::ShouldPruneNode(const StNode* node, double next_acc) const {
+  // 速度约束检查
+  double next_vel = node->v + next_acc * 1.0;  // 1.0是时间步长
+  if (next_vel > pruning_config_.max_velocity || 
+      next_vel < pruning_config_.min_velocity) {
+    return true;
+  }
+
+  // 加速度约束检查
+  if (next_acc > pruning_config_.max_acceleration || 
+      next_acc < pruning_config_.max_deceleration) {
+    return true;
+  }
+
+  // 代价阈值检查
+  if (node->cost > pruning_config_.max_cost) {
+    return true;
+  }
+
+  return false;
+}
+
+bool StGraph::CheckCollision(const StNode* current_node, double acc,
+                           std::unique_ptr<StNode>& next_node) const {
+  for (int k = 1; k <= pruning_config_.collision_check_steps; ++k) {
+    double check_time = current_node->t + k / 
+                       static_cast<double>(pruning_config_.collision_check_steps);
+    double check_dist = current_node->GetDistance(
+        k / static_cast<double>(pruning_config_.collision_check_steps), acc);
+    
+    double dist = sdf_->SignedDistance(Eigen::Vector2d(check_time, check_dist));
+    
+    if (dist < pruning_config_.collision_threshold) {
+      return true;  // 发现碰撞
+    }
+    
+    next_node->CalObstacleCost(dist);
+  }
+  return false;  // 无碰撞
+}
+
 void StGraph::BuildStGraph(const std::vector<Obstacle>& dynamic_obstacles,
                            const GPPath& gp_path) {
   max_arc_length_ = gp_path.MaximumArcLength();
@@ -205,16 +267,33 @@ bool StGraph::SearchWithLocalTruncation(const int k,
   for (int i = 0; i < 8; ++i) {
     std::vector<std::unique_ptr<StNode>> cache;
 
-    for (int j = 0; j < search_tree_[i].size(); ++j) {
+    for (int j = 0; j < search_tree_[i].size(); ++j) 
+    {
+      const auto& current_node = search_tree_[i][j];
+    
       for (const auto& a : discrete_a) {
-        auto next_node = search_tree_[i][j]->Forward(1.0, a);
-        if (next_node->v < 0) continue;  // TODO: can optimize
-        for (int k = 1; k <= 5; ++k) {
-          next_node->CalObstacleCost(sdf_->SignedDistance(
-              Eigen::Vector2d(search_tree_[i][j]->t + k / 5.0,
-                              search_tree_[i][j]->GetDistance(k / 5.0, a))));
-        }
-        if (next_node->cost < 1e9) {
+
+         // 使用新的剪枝检查
+        if (ShouldPruneNode(current_node.get(), a)) {
+          continue;
+        } 
+        
+        auto next_node = current_node->Forward(1.0, a);
+  
+        // auto next_node = search_tree_[i][j]->Forward(1.0, a);
+        // if (next_node->v < 0) continue;  // TODO: can optimize
+        // for (int k = 1; k <= 5; ++k) {
+        //   next_node->CalObstacleCost(sdf_->SignedDistance(
+        //       Eigen::Vector2d(search_tree_[i][j]->t + k / 5.0,
+        //                       search_tree_[i][j]->GetDistance(k / 5.0, a))));
+        // }
+        // if (next_node->cost < 1e9) {
+        //   cache.emplace_back(std::move(next_node));
+        // }
+
+         // 使用新的碰撞检查
+        if (!CheckCollision(current_node.get(), a, next_node) && 
+            next_node->cost < pruning_config_.max_cost) {
           cache.emplace_back(std::move(next_node));
         }
       }

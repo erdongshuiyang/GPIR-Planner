@@ -1,0 +1,18 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../../media/erdong2004/MyPassport/desay/apa_plan-develop"
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"*.ipp": "cpp",
+			"deque": "cpp",
+			"string": "cpp",
+			"vector": "cpp"
+		}
+	}
+}

@@ -2,11 +2,11 @@
 <robot name="vehicle" xmlns:xacro="http://ros.org/wiki/xacro">
   <link name="ego_vehicle2d">
     <visual>
-      <!-- <origin xyz="0 0 1.0" rpy="0 0 1.5707963267948966"/> -->
-      <origin xyz="0 0 0" rpy="1.570796326794896 0 3.1415926"/>
+      <origin xyz="0 0 1.0" rpy="0 0 1.5707963267948966"/>
+      <!-- <origin xyz="0 0 0" rpy="1.570796326794896 0 3.1415926"/> -->
       <geometry>
-        <!-- <mesh filename="package://planning_core/3d_model/model3/model3.dae" scale="1.0 1.0 1.0"/> -->
-        <mesh filename="package://planning_core/3d_model/lexus/lexus.dae" scale="1.0 1.0 1.0"/>
+        <mesh filename="package://planning_core/3d_model/model3/model3.dae" scale="1.0 1.0 1.0"/>
+        <!-- <mesh filename="package://planning_core/3d_model/lexus/lexus.dae" scale="1.0 1.0 1.0"/> -->
       </geometry>
     </visual>
   </link>

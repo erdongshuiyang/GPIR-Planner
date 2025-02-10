@@ -104,6 +104,17 @@ class StGraph {
 
   // double refernce_speed_ = 0.0;  // 添加引用速度成员变量
   // double reference_speed_ = 8.0;  // 添加引用速度成员变量
+
+  // 新增: 场景相关参数
+  double distance_to_obstacle_ = std::numeric_limits<double>::max();
+  double velocity_diff_to_ref_ = 0.0;
+  
+  // 新增: 更新权重的方法
+  void UpdateDynamicWeights();
+  
+  // 新增: 获取与最近障碍物的距离
+  double GetMinObstacleDistance(const double t, const double s) const;
+  
 };
 
 }  // namespace planning

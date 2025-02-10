@@ -1,20 +1,8 @@
 {
-    "ros.distro": "noetic",
-    "python.autoComplete.extraPaths": [
-        "/opt/ros/noetic/lib/python3/dist-packages"
-    ],
-    "ros.rosSetupScript": "/opt/ros/noetic/setup.bash",
-    "ros.workspaceSetupScript": "${workspaceFolder}/devel/setup.bash",
-    "python.analysis.extraPaths": [
-        "/home/erdong2004/GPIR_planner_ws/devel/lib/python3/dist-packages",
-        "/opt/ros/noetic/lib/python3/dist-packages",
-        "/home/erdong2004/CARLA_0.9.11/PythonAPI/carla/dist/carla-0.9.11-py3.7-linux-x86_64.egg",
-        "/home/erdong2004/CARLA_0.9.11/PythonAPI/carla"
-    ],
     "files.associations": {
-        "cmath": "cpp",
         "cctype": "cpp",
         "clocale": "cpp",
+        "cmath": "cpp",
         "csignal": "cpp",
         "cstdarg": "cpp",
         "cstddef": "cpp",
@@ -32,6 +20,7 @@
         "*.tcc": "cpp",
         "bitset": "cpp",
         "chrono": "cpp",
+        "cinttypes": "cpp",
         "complex": "cpp",
         "condition_variable": "cpp",
         "cstdint": "cpp",
@@ -77,27 +66,10 @@
         "streambuf": "cpp",
         "thread": "cpp",
         "cfenv": "cpp",
-        "cinttypes": "cpp",
         "typeindex": "cpp",
         "typeinfo": "cpp",
         "variant": "cpp",
         "bit": "cpp",
-        "*.ipp": "cpp",
-        "core": "cpp",
-        "superlusupport": "cpp",
-        "*.evaluator": "cpp",
-        "*.traits": "cpp",
-        "adolcforward": "cpp",
-        "alignedvector3": "cpp",
-        "autodiff": "cpp",
-        "bvh": "cpp",
-        "eulerangles": "cpp",
-        "fft": "cpp",
-        "kroneckerproduct": "cpp",
-        "mprealsupport": "cpp",
-        "numericaldiff": "cpp",
-        "specialfunctions": "cpp",
-        "splines": "cpp"
-    },
-    "cmake.sourceDirectory": "/home/erdong2004/GPIR_planner_ws/gpir_code/速度规划/JPSSearch_1"
+        "*.ipp": "cpp"
+    }
 }

@@ -12,9 +12,11 @@
 namespace planning {
 
 struct StNodeWeights {
-  double ref_v = 0.0;
-  double obstacle = 0.0;
-  double control = 0.0;
+  double ref_v = 0.0;      // 参考速度权重
+  double obstacle = 0.0;   // 障碍物权重
+  double control = 0.0;    // 控制量权重
+  double jerk = 0.0;       // 新增: 加加速度权重
+  double v_change = 0.0;   // 新增: 速度变化权重
 };
 
 class StNode {
@@ -24,7 +26,7 @@ class StNode {
       : s(s), v(v), a(a) {}
 
   std::unique_ptr<StNode> Forward(const double delta_t, const double a) const;
-  void CalObstacleCost(const double d);
+  void CalTotalCost(const double obstacle_distance);
   inline double GetDistance(const double delta_t, const double a) const {
     return s + v * delta_t + 0.5 * a * delta_t * delta_t;
   }
@@ -39,6 +41,12 @@ class StNode {
   double a = 0.0;
   double cost = 0.0;
   const StNode* parent = nullptr;
+
+  // 新增: 计算加加速度
+  double GetJerk(const double delta_t) const {
+    if (!parent) return 0.0;
+    return (a - parent->a) / delta_t;
+  }
 
  private:
   static double ref_v_;

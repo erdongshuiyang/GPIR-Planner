@@ -20,6 +20,41 @@
 
 namespace planning {
 
+
+void StGraph::UpdateDynamicWeights() {
+  StNodeWeights weights;
+  
+  // 根据与障碍物距离动态调整障碍物权重
+  if (distance_to_obstacle_ < 5.0) {
+    weights.obstacle = 20.0;  // 距离近时增大权重
+  } else {
+    weights.obstacle = 10.0;
+  }
+  
+  // 根据速度差异调整参考速度权重
+  if (std::abs(velocity_diff_to_ref_) > 3.0) {
+    weights.ref_v = 5.0;  // 速度差大时增大权重
+  } else {
+    weights.ref_v = 3.0;
+  }
+  
+  // 基础控制量权重
+  weights.control = 0.5;
+  
+  // 加加速度权重，保证舒适性
+  weights.jerk = 2.0;
+  
+  // 速度变化权重，避免剧烈变速
+  weights.v_change = 1.5;
+  
+  StNode::SetWeights(weights);
+}
+
+double StGraph::GetMinObstacleDistance(const double t, const double s) const {
+  return sdf_->SignedDistance(Eigen::Vector2d(t, s));
+}
+
+
 void StGraph::BuildStGraph(const std::vector<Obstacle>& dynamic_obstacles,
                            const GPPath& gp_path) {
   max_arc_length_ = gp_path.MaximumArcLength();
@@ -205,15 +240,30 @@ bool StGraph::SearchWithLocalTruncation(const int k,
   for (int i = 0; i < 8; ++i) {
     std::vector<std::unique_ptr<StNode>> cache;
 
+     // 更新动态权重
+    UpdateDynamicWeights();
+
     for (int j = 0; j < search_tree_[i].size(); ++j) {
       for (const auto& a : discrete_a) {
         auto next_node = search_tree_[i][j]->Forward(1.0, a);
         if (next_node->v < 0) continue;  // TODO: can optimize
+        
+        // 获取最近障碍物距离
+        double min_obs_distance = std::numeric_limits<double>::max();
+        
         for (int k = 1; k <= 5; ++k) {
-          next_node->CalObstacleCost(sdf_->SignedDistance(
-              Eigen::Vector2d(search_tree_[i][j]->t + k / 5.0,
-                              search_tree_[i][j]->GetDistance(k / 5.0, a))));
+          // next_node->CalObstacleCost(sdf_->SignedDistance(
+          //     Eigen::Vector2d(search_tree_[i][j]->t + k / 5.0,
+          //                     search_tree_[i][j]->GetDistance(k / 5.0, a))));
+          double t = search_tree_[i][j]->t + k / 5.0;
+          double s = search_tree_[i][j]->GetDistance(k / 5.0, a);
+          min_obs_distance = std::min(min_obs_distance, 
+                                    GetMinObstacleDistance(t, s));
         }
+
+        // 更新节点代价
+        next_node->CalTotalCost(min_obs_distance);
+
         if (next_node->cost < 1e9) {
           cache.emplace_back(std::move(next_node));
         }

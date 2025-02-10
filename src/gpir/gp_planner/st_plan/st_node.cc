@@ -23,18 +23,41 @@ std::unique_ptr<StNode> StNode::Forward(const double delta_t,
   st_node->s = s + v * delta_t + 0.5 * a * delta_t * delta_t;
   st_node->v = v + a * delta_t;
   st_node->cost = cost;
-  st_node->cost += weights_.ref_v * std::fabs(v + a * delta_t / 2.0 - ref_v_);
-  st_node->cost += weights_.control * fabs(a) * delta_t;
+  // st_node->cost += weights_.ref_v * std::fabs(v + a * delta_t / 2.0 - ref_v_);
+  // st_node->cost += weights_.control * fabs(a) * delta_t;
   st_node->parent = this;
+
+  // 计算代价
+  st_node->CalTotalCost(0.0);  // 这里的障碍物距离将在调用时更新
+
   return st_node;
 }
 
-void StNode::CalObstacleCost(const double d) {
+void StNode::CalTotalCost(const double obstacle_distance) {
+  // 参考速度代价
+  cost += weights_.ref_v * std::fabs(v - ref_v_);
+
+  // 障碍物代价
   constexpr double kMinSafeDistance = 1.0;
-  if (d <= kMinSafeDistance) {
-    cost += 1e9;
-  } else if (d < 2.5) {
-    cost += weights_.obstacle * 10 / d;
+  if (obstacle_distance <= kMinSafeDistance) {
+    cost += 1e9;  // 碰撞惩罚
+  } else if (obstacle_distance < 2.5) {
+    cost += weights_.obstacle * (2.5 / obstacle_distance);
+  }
+
+  // 控制量代价
+  cost += weights_.control * std::fabs(a);
+
+  // 加加速度代价
+  if (parent) {
+    double jerk = GetJerk(t - parent->t);
+    cost += weights_.jerk * jerk * jerk;
+  }
+
+  // 速度变化代价
+  if (parent) {
+    cost += weights_.v_change * std::fabs(v - parent->v);
   }
 }
+
 }  // namespace planning

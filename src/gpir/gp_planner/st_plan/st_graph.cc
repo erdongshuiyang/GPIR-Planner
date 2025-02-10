@@ -232,6 +232,9 @@ bool StGraph::SearchWithJPS(double ref_velocity,std::vector<StNode>* result) {
 
 bool StGraph::SearchWithLocalTruncation(const int k,
                                         std::vector<StNode>* result) {
+  // 在搜索开始前设置目标距离
+  SetTargetDistance(max_arc_length_);
+
   CHECK(k % 2 == 1) << "k needs to be an odd number, while k is " << k;
 
   int num_a_per_side = static_cast<int>(k / 2.0);
@@ -279,17 +282,6 @@ bool StGraph::SearchWithLocalTruncation(const int k,
         } 
         
         auto next_node = current_node->Forward(1.0, a);
-  
-        // auto next_node = search_tree_[i][j]->Forward(1.0, a);
-        // if (next_node->v < 0) continue;  // TODO: can optimize
-        // for (int k = 1; k <= 5; ++k) {
-        //   next_node->CalObstacleCost(sdf_->SignedDistance(
-        //       Eigen::Vector2d(search_tree_[i][j]->t + k / 5.0,
-        //                       search_tree_[i][j]->GetDistance(k / 5.0, a))));
-        // }
-        // if (next_node->cost < 1e9) {
-        //   cache.emplace_back(std::move(next_node));
-        // }
 
          // 使用新的碰撞检查
         if (!CheckCollision(current_node.get(), a, next_node) && 

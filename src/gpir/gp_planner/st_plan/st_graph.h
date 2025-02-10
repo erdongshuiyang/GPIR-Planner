@@ -67,6 +67,12 @@ class StGraph {
 
   const OccupancyMap& grid_map() const { return sdf_->occupancy_map(); }
 
+  // 添加设置目标距离的方法
+   void SetTargetDistance(double distance) {
+        StNode::SetTargetDistance(distance);
+    }
+
+
  private: 
   void GetObstacleBlockSegment(
       const Obstacle& obstacle, const GPPath& gp_path,

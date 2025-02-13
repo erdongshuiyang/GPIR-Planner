@@ -33,9 +33,25 @@ void ControlUncertaintyModel::UpdateFromAnalyzer(
 }
 
 void ControlUncertaintyModel::UpdateSDEParameters() {
+   // 添加防护
+  if (!error_stats_.control_error_covariance.allFinite() ||
+      error_stats_.control_error_covariance.isZero()) {
+    // 使用默认最小值
+    sde_params_.Qc.diagonal() << kMinVariance, kMinVariance;
+    LOG(WARNING) << "Using minimum variance due to invalid covariance";
+    return;
+  }
+
   // 更新噪声协方差矩阵
   sde_params_.Qc(0,0) = error_stats_.velocity_error_var;
   sde_params_.Qc(1,1) = error_stats_.steering_error_var;
+
+  // 确保不小于最小值
+  sde_params_.Qc = sde_params_.Qc.array().max(kMinVariance);
+
+   // 添加衰减因子
+  const double decay_factor = 0.8;
+  sde_params_.Qc *= decay_factor;
 
    // 打印SDE参数
   LOG(INFO) << "Updated SDE parameters:"
@@ -48,7 +64,7 @@ void ControlUncertaintyModel::UpdateSDEParameters() {
   // }
 
   // 添加衰减因子
-  const double decay_factor = 0.8;
+  // const double decay_factor = 0.8;
   sde_params_.Qc(0,0) = decay_factor * error_stats_.velocity_error_var;
   sde_params_.Qc(1,1) = decay_factor * error_stats_.steering_error_var;
 }

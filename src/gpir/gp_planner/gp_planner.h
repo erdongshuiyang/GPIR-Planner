@@ -5,22 +5,54 @@
  * listed on the above website.
  */
 
+// #include <std_msgs/Bool.h>
+
+// #include <fstream>
+// #include <memory>
+
+// #include "gp_planner/sdf/signed_distance_field_2d.h"
+// #include "planning_core/planner/planner.h"
+// #include "planning_core/planning_common/vehicle_info.h"
+
+// #include "planning_core/planning_data_collector.h"
+
+// #include <nav_msgs/Path.h>
+// #include <std_msgs/Float64MultiArray.h>
+// #include <geometry_msgs/PoseStamped.h>
+
+// #include <planning_core/planning_common/perception_uncertainty.h>
+
+// #include "planning_core/planning_common/control_error_analyzer.h"
+
+#pragma once
+
 #include <std_msgs/Bool.h>
-
-#include <fstream>
-#include <memory>
-
-#include "gp_planner/sdf/signed_distance_field_2d.h"
-#include "planning_core/planner/planner.h"
-#include "planning_core/planning_common/vehicle_info.h"
-
-#include "planning_core/planning_data_collector.h"
-
 #include <nav_msgs/Path.h>
 #include <std_msgs/Float64MultiArray.h>
 #include <geometry_msgs/PoseStamped.h>
 
-#include <planning_core/planning_common/perception_uncertainty.h>
+#include <fstream>
+#include <memory>
+
+
+// 基础包含
+#include "planning_core/planner/planner.h"
+#include "planning_core/planning_common/vehicle_info.h"
+#include "planning_core/planning_common/control_error_analyzer.h"
+#include "planning_core/planning_common/perception_uncertainty.h"
+
+// GPIR相关包含
+#include "gp_planner/sdf/signed_distance_field_2d.h"
+#include "gp_planner/gp/gp_incremental_path_planner.h"
+
+// 添加 simulator adapter 相关头文件
+#include "planning_core/simulation/simulator_adapter.h"
+
+// 前向声明GPPath
+namespace planning {
+class GPPath;
+class PlanningCore;  // 前向声明
+}
 
 namespace planning {
 
@@ -62,6 +94,10 @@ class GPPlanner : public Planner {
 
   void PublishPlanningData(const GPPath& path);
 
+  // 在现有private成员之后添加
+  void UpdateControlUncertainty(GPIncrementalPathPlanner& path_planner,
+                               const ControlErrorAnalyzer* analyzer);
+
  private:
   ros::Publisher trajectory_pub_;
   ros::Publisher critical_obstacle_pub_;
@@ -96,6 +132,9 @@ class GPPlanner : public Planner {
 
   // 添加静态障碍物不确定性成员
   PerceptionUncertainty static_obstacle_uncertainty_;
+
+   // 改为指针引用
+  const std::unique_ptr<simulation::SimulatorAdapter>* simulator_ptr_{nullptr};
 };
 
 }  // namespace planning

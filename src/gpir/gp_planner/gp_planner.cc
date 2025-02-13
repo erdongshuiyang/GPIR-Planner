@@ -6,6 +6,7 @@
  */
 
 #include "gp_planner/gp_planner.h"
+#include "planning_core/planning_core.h"  // 添加完整定义
 
 #include <glog/logging.h>
 #include <jsk_recognition_msgs/BoundingBox.h>
@@ -18,7 +19,22 @@
 #include "gp_planner/st_plan/st_graph.h"
 #include "planning_core/planning_common/planning_visual.h"
 
+// 如果需要simulator_adapter的定义，使用基类头文件
+#include "planning_core/simulation/simulator_adapter.h"
+
 namespace planning {
+
+
+void GPPlanner::UpdateControlUncertainty(
+    GPIncrementalPathPlanner& path_planner,
+    const ControlErrorAnalyzer* analyzer) {
+  if (!analyzer) {
+    LOG(WARNING) << "Control error analyzer not available";
+    return;
+  }
+  path_planner.UpdateControlUncertainty(*analyzer);
+  LOG(INFO) << "Updated control uncertainty from analyzer";
+}
 
 void GPPlanner::Init() {
   ros::NodeHandle node;
@@ -38,6 +54,14 @@ void GPPlanner::Init() {
 
   path_data_pub_ = node.advertise<nav_msgs::Path>("/planning/path_data", 1);
   curvature_data_pub_ = node.advertise<std_msgs::Float64MultiArray>("/planning/curvature_data", 1);
+
+   // 从PlanningCore获取simulator
+  if (parent_) {
+    simulator_ptr_ = &(dynamic_cast<PlanningCore*>(parent_)->GetSimulator());
+    if (!simulator_ptr_ || !(*simulator_ptr_)) {
+      LOG(ERROR) << "Failed to get simulator from PlanningCore";
+    }
+  }
 
 }
 
@@ -182,6 +206,11 @@ bool GPPlanner::PlanWithGPIR(
 
   // 设置后再次输出
   // LOG(INFO) << "After setting uncertainty to planner ";
+
+    // 使用指针引用访问simulator
+  const auto* analyzer = simulator_ptr_ && *simulator_ptr_ ? 
+                        (*simulator_ptr_)->GetControlErrorAnalyzer() : nullptr;
+  UpdateControlUncertainty(gp_path_planner, analyzer);
 
   if (!gp_path_planner.GenerateInitialGPPath(reference_line, frenet_state, 100,
                                              obstacle_location_hint,

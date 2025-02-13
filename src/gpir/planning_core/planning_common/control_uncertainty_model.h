@@ -90,10 +90,19 @@ public:
   
   // 检查模型是否有效
   bool IsValid() const {
-    return sde_params_.Qc.allFinite() &&
-           error_stats_.control_error_covariance.allFinite() &&
-           std::isfinite(error_stats_.delay_mean);
+  bool valid = sde_params_.Qc.allFinite() &&
+               error_stats_.control_error_covariance.allFinite() &&
+               std::isfinite(error_stats_.delay_mean);
+               
+  if (!valid) {
+    LOG(WARNING) << "Invalid model state:"
+                 << "\nQc finite: " << sde_params_.Qc.allFinite()
+                 << "\nCovariance finite: " << error_stats_.control_error_covariance.allFinite()
+                 << "\nDelay finite: " << std::isfinite(error_stats_.delay_mean);
   }
+  
+  return valid;
+}
 
 private:
   // 更新SDE参数

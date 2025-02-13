@@ -35,8 +35,9 @@ class CarlaAdapter final : public SimulatorAdapter {
   void SetTrajectory(const common::Trajectory& trajectory) override;
 
   // 新增:获取控制误差分析结果
-  const ControlErrorAnalyzer& GetControlErrorAnalyzer() const {
-    return *error_analyzer_;
+  // 修改返回类型为指针，与基类一致
+  const ControlErrorAnalyzer* GetControlErrorAnalyzer() const override {
+    return error_analyzer_.get();
   }
 
  protected:

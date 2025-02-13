@@ -152,6 +152,7 @@ void PlanningCore::Init() {
 
   // init planner
   planner_ = std::make_unique<GPPlanner>();
+  planner_->SetParent(this);  // 设置父类指针
   planner_->Init();
 
   // 初始化不确定性估计器

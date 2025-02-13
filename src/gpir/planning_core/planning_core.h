@@ -72,10 +72,18 @@ class PlanningCore {
 
   void Run(const ros::TimerEvent&);
 
+  // 修改为返回 unique_ptr 的引用
+  const std::unique_ptr<simulation::SimulatorAdapter>& GetSimulator() const {
+    return simulator_;
+  }
+
  private:
   void NewRouteCallBack(const geometry_msgs::PoseStamped& goal);
   void JoyCallBack(const sensor_msgs::Joy& joy);
   bool UpdateDataFrame();
+
+    // 添加获取simulator的方法
+  // std::unique_ptr<simulation::SimulatorAdapter> simulator_;
 
  private:
   std::mutex route_mutex_;
@@ -95,6 +103,12 @@ class PlanningCore {
   std::unique_ptr<MockPredictor> mock_predictor_;
 
   UncertaintyEstimator uncertainty_estimator_;
+
+  // 修改返回类型为 unique_ptr 的引用
+  // const std::unique_ptr<simulation::SimulatorAdapter>& GetSimulator() const {
+  //   return simulator_;
+  // }
+    
 };
 
 }  // namespace planning

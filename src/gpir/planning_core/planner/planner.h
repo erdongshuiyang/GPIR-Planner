@@ -7,11 +7,21 @@
 
 #pragma once
 
+
+// 前向声明
+namespace planning {
+class PlanningCore;  // 前向声明
+}
+
 #include "planning_core/navigation/navigation_map.h"
 
 namespace planning {
 
 class Planner {
+
+protected:
+  PlanningCore* parent_{nullptr};
+
  public:
   Planner() = default;
 
@@ -23,6 +33,8 @@ class Planner {
   virtual void Init() = 0;
   virtual void PlanOnce(NavigationMap* navigation_map_) = 0;
   virtual void LogDebugInfo() {}
+
+  void SetParent(PlanningCore* parent) { parent_ = parent; }
 };
 
 }  // namespace planning

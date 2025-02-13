@@ -12,6 +12,8 @@
 #include "planning_core/planning_common/obstacle.h"
 #include "planning_core/planning_common/vehicle_info.h"
 
+#include "planning_core/planning_common/control_error_analyzer.h"
+
 namespace planning {
 namespace simulation {
 
@@ -26,6 +28,9 @@ class SimulatorAdapter {
   virtual bool UpdateEgoState(common::State* state) = 0;
   virtual bool UpdatePerceptionResults(std::vector<Obstacle>* obstacles) = 0;
   virtual void SetTrajectory(const common::Trajectory& trajectory) = 0;
+
+    // 新增: 获取控制误差分析器的虚函数
+  virtual const ControlErrorAnalyzer* GetControlErrorAnalyzer() const = 0;
 };
 
 enum class SimulatorType {

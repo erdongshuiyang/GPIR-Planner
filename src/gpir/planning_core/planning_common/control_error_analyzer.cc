@@ -47,8 +47,10 @@ void ControlErrorAnalyzer::UpdateErrorSequence(const ControlError& error) {
 
 void ControlErrorAnalyzer::UpdateStatistics() {
   if (control_error_buffer_.empty() && tracking_error_buffer_.empty()) {
+     control_covariance_ = Eigen::Matrix2d::Identity() * 1e-6;
     return;
   }
+
 
   // 更新控制误差统计
   if (!control_error_buffer_.empty()) {
@@ -58,33 +60,42 @@ void ControlErrorAnalyzer::UpdateStatistics() {
     max_execution_delay_ = 0.0;
 
     for (const auto& error : control_error_buffer_) {
-      Eigen::Vector2d err(error.velocity_error, error.steering_error);
-      mean += err;
+      mean(0) = error.velocity_error;
+      mean(1) = error.steering_error;
       total_delay += error.execution_delay;
       max_execution_delay_ = std::max(max_execution_delay_, error.execution_delay);
     }
-
     mean /= control_error_buffer_.size();
     avg_execution_delay_ = total_delay / control_error_buffer_.size();
 
-    // 计算协方差矩阵
+    // 重置协方差矩阵
     control_covariance_ = Eigen::Matrix2d::Zero();
-    for (const auto& error : control_error_buffer_) {
-      Eigen::Vector2d err(error.velocity_error, error.steering_error);
-      Eigen::Vector2d centered = err - mean;
-      control_covariance_ += centered * centered.transpose();
-    }
-    control_covariance_ /= (control_error_buffer_.size() - 1);
 
-    // 添加数值保护
-    for (int i = 0; i < 2; ++i) {
-      for (int j = 0; j < 2; ++j) {
-        if (std::abs(control_covariance_(i,j)) < 1e-10) {
-          control_covariance_(i,j) = 0.0;
-        }
+    // 计算协方差
+    if (control_error_buffer_.size() > 1) {
+      for (const auto& error : control_error_buffer_) {
+        Eigen::Vector2d err(error.velocity_error, error.steering_error);
+        Eigen::Vector2d centered = err - mean;
+        control_covariance_ += centered * centered.transpose();
       }
+      control_covariance_ /= (control_error_buffer_.size() - 1);
+    } else {
+      // 如果只有一个样本，使用默认最小协方差
+      control_covariance_ = Eigen::Matrix2d::Identity() * 1e-6;
     }
+
+    // 确保协方差矩阵数值稳定
+    control_covariance_ = control_covariance_.array().max(1e-6);
+    
+    // 确保对称性
+    control_covariance_ = 0.5 * (control_covariance_ + control_covariance_.transpose());
   }
+
+   // 打印调试信息
+  LOG(INFO) << "Control Error Statistics:"
+            // << "\nMean velocity error: " << mean(0)
+            // << "\nMean steering error: " << mean(1)
+            << "\nCovariance:\n" << control_covariance_;
 
   // 更新轨迹跟踪误差统计
   if (!tracking_error_buffer_.empty()) {
@@ -99,6 +110,10 @@ void ControlErrorAnalyzer::UpdateStatistics() {
     avg_lateral_error_ = total_lat_error / tracking_error_buffer_.size();
     avg_longitudinal_error_ = total_lon_error / tracking_error_buffer_.size();
   }
+
+   // 确保协方差矩阵非零
+  control_covariance_.diagonal() = 
+      control_covariance_.diagonal().array().max(1e-6);
 
   // 打印调试信息
   LOG_EVERY_N(INFO, 100) << "\nControl Error Statistics:"

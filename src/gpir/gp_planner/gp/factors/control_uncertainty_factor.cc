@@ -28,7 +28,7 @@ gtsam::Vector ControlUncertaintyFactor::evaluateError(
   // 预测下一状态
   gtsam::Vector3 x2_pred;
   gtsam::Matrix jacobian;
-  predictNextState(x1, &x2_pred, &jacobian);
+  predictNextState(x1, &x2_pred, &jacobian); //确定性部分的状态转移
 
   // 计算误差
   gtsam::Vector3 error = x2 - x2_pred;
@@ -41,7 +41,9 @@ gtsam::Vector ControlUncertaintyFactor::evaluateError(
 
   // 修改为Matrix3d类型
   Eigen::Matrix3d state_covariance = Eigen::Matrix3d::Identity() * kMinCovariance;
-  model_.PredictUncertainty(current_state, dt_, &state_covariance);
+  //计算状态不确定性(协方差)的传播
+  //这反映了不确定性在状态转移过程中的累积
+  model_.PredictUncertainty(current_state, dt_, &state_covariance); //这反映了不确定性在状态转移过程中的累积
 
   // 计算代价并使用它
   double mahalanobis_cost = computeCost(error, state_covariance);
@@ -95,6 +97,7 @@ double ControlUncertaintyFactor::computeCost(
   cov.diagonal().array() += kMinCovariance;
 
   // 计算马氏距离
+  // 误差向量在协方差矩阵加权下的平方距离
   double cost = error.transpose() * cov.inverse() * error;
 
   // 限制最大代价

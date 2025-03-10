@@ -80,7 +80,9 @@ void MockPredictor::VisualizePrediction(
   node_marker.type = visualization_msgs::Marker::SPHERE_LIST;
   node_marker.action = visualization_msgs::Marker::MODIFY;
   node_marker.pose.orientation.w = 1;
-  node_marker.color = common::ColorMap::at(common::Color::kMagenta).toRosMsg();
+  // node_marker.color = common::ColorMap::at(common::Color::kMagenta).toRosMsg();
+  node_marker.color = common::ColorMap::at(common::Color::kGreen).toRosMsg();
+
   node_marker.scale.x = node_marker.scale.y = node_marker.scale.z = 0.3;
   node_marker.lifetime = ros::Duration(0.1);
 

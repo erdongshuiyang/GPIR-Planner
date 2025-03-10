@@ -792,7 +792,9 @@ void NavigationMap::PublishReferenceLine() {
     maker.scale.y = 0.0;
     maker.scale.z = 0.0;
     maker.color =
-        common::ColorMap::at(common::Color::kRoyalBlue, 0.3).toRosMsg();
+        // common::ColorMap::at(common::Color::kRoyalBlue, 0.3).toRosMsg();
+        common::ColorMap::at(common::Color::kRoyalBlue, 0.2).toRosMsg();
+
     maker.pose.orientation.w = 1;
     maker.lifetime = ros::Duration(0.15);
 

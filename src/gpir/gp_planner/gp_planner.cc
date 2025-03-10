@@ -310,25 +310,36 @@ bool GPPlanner::PlanWithGPIR(
 void GPPlanner::VisualizeTrajectory(
     const std::vector<std::pair<hdmap::LaneSegmentBehavior,
                                 common::Trajectory>>& trajectory_candidates) {
-  visualization_msgs::MarkerArray markers;
-  visualization_msgs::Marker shape;
+  visualization_msgs::MarkerArray markers; //创建一个标记数组用于存储所有要显示的可视化元素
+  visualization_msgs::Marker shape; //创建一个特殊的shape标记，用于最优轨迹的额外可视化
 
-  constexpr double sample_dis = 3;
-  int id_count = 0;
+  constexpr double sample_dis = 3; //设置采样距离：每3米采样一个节点点
+  int id_count = 0; //初始化标记ID计数器和透明度值
   double alpha = 1.0;
-  common::Color line_color, node_color;
+  common::Color line_color, node_color; //声明线条和节点的颜色变量
   for (int i = 0; i < trajectory_candidates.size(); ++i) {
-    visualization_msgs::Marker line, node;
+    visualization_msgs::Marker line, node; //为每个候选创建两种标记：line(线条)表示轨迹路径，node(节点)表示关键点
     if (i == 0) {
       alpha = 1.0;
       line_color = common::Color::kOrangeRed;
-      node_color = common::Color::kBlue;
+      node_color = common::Color::kBlue; //对最优轨迹(第一个候选)使用鲜明颜色：橙红色线条和蓝色节点，完全不透明
     } else {
       alpha = 0.5;
       line_color = common::Color::kGrey;
-      node_color = common::Color::kBlack;
+      node_color = common::Color::kBlack; //其他候选轨迹使用灰色线条和黑色节点，半透明显示(alpha=0.5)
     }
+    /* 
+      设置线条标记的所有属性：
 
+        填充标准头部信息(帧ID、时间戳等)
+        设置线条尺寸(0.15x0.15x0.15米)和颜色
+        分配唯一ID
+        指定为连续线条类型(LINE_STRIP)
+        设置为修改现有标记的动作
+        设置四元数方向(w=1.0表示无旋转)
+        设置生命周期为0.15秒(短暂显示后自动消失)
+    */
+ 
     PlanningVisual::FillHeader(&line.header);
     PlanningVisual::SetScaleAndColor({0.15, 0.15, 0.15}, line_color, &line,
                                      alpha);
@@ -338,6 +349,13 @@ void GPPlanner::VisualizeTrajectory(
     line.pose.orientation.w = 1.0;
     line.lifetime = ros::Duration(0.15);
 
+    /* 
+    设置节点标记的属性：
+      设置为圆柱体类型(CYLINDER)
+      尺寸为0.5x0.5x0.1米(直径0.5米，高0.1米的圆柱)
+      其他属性与线条类似    
+     */
+
     PlanningVisual::FillHeader(&node.header);
     PlanningVisual::SetScaleAndColor({0.5, 0.5, 0.1}, node_color, &node, alpha);
     node.type = visualization_msgs::Marker::CYLINDER;
@@ -346,9 +364,18 @@ void GPPlanner::VisualizeTrajectory(
     node.pose.orientation.w = 1.0;
     node.lifetime = ros::Duration(0.15);
 
+
+    /* 
+      仅为最优轨迹创建额外的金色轮廓：
+        宽度为2.1米，更宽于普通轨迹线
+        使用金色，但更透明(alpha=0.2)
+        类型与普通轨迹线相同(LINE_STRIP)
+    */
     if (i == 0) {
       PlanningVisual::FillHeader(&shape.header);
-      PlanningVisual::SetScaleAndColor({2.1, 0, 0}, common::kGold, &shape, 0.2);
+      // PlanningVisual::SetScaleAndColor({2.1, 0, 0}, common::kGold, &shape, 0.2);
+      PlanningVisual::SetScaleAndColor({2.1, 0, 0}, common::kMagenta, &shape, 0.2);
+
       shape.id = id_count++;
       shape.type = visualization_msgs::Marker::LINE_STRIP;
       shape.action = visualization_msgs::Marker::MODIFY;
@@ -356,9 +383,18 @@ void GPPlanner::VisualizeTrajectory(
       shape.lifetime = ros::Duration(0.15);
     }
 
-    geometry_msgs::Point point;
-    double start_s = trajectory_candidates[i].second.front().s;
+    geometry_msgs::Point point; //创建点对象用于存储轨迹点坐标
+    double start_s = trajectory_candidates[i].second.front().s; //记录当前轨迹的起始s坐标(路径累积距离)
+    //开始遍历轨迹上的所有点
     for (const auto& traj_point : trajectory_candidates[i].second) {
+      
+      /* 
+      每隔3米(sample_dis)放置一个圆柱体节点：
+        更新参考起点位置
+        为新节点分配ID
+        设置节点位置坐标
+        将节点添加到标记数组
+      */
       if (traj_point.s - start_s > sample_dis) {
         start_s = traj_point.s;
         node.id = id_count++;
@@ -367,6 +403,7 @@ void GPPlanner::VisualizeTrajectory(
         node.pose.position.z = 0.2;
         markers.markers.push_back(node);
       }
+      //将每个轨迹点添加到线条标记中(高度为0.2米)，如果是最优轨迹，也添加到金色shape标记中，轨迹点位置从trajectory_candidates中的position字段获取
       point.x = traj_point.position.x();
       point.y = traj_point.position.y();
       point.z = 0.2;
@@ -392,7 +429,7 @@ void GPPlanner::VisualizeCriticalObstacle(
   for (const auto& obs : critical_obstacles) {
     PlanningVisual::Get2DBoxMarker(obs.state().position, obs.width() + 0.3,
                                    obs.length() + 0.3, obs.state().heading,
-                                   common::Color::kRed, {0.3, 0, 0}, &marker);
+                                   common::Color::kGrey, {0.3, 0, 0}, &marker);
     marker.id = id_count++;
     markers.markers.emplace_back(marker);
   }
@@ -428,10 +465,15 @@ void GPPlanner::VisualizeTargetLane(const ReferenceLine& reference_line) {
   for (double s = 0; s < reference_line.length(); s += step_length) {
     auto bh = reference_line.behavior();
     if (bh == hdmap::LaneSegmentBehavior::kKeep) {
-      PlanningVisual::SetScaleAndColor({0.4, 0, 0}, common::Color::kGreen,
+      // PlanningVisual::SetScaleAndColor({0.4, 0, 0}, common::Color::kGreen,
+      //                                  &marker);
+
+      PlanningVisual::SetScaleAndColor({0.4, 0, 0}, common::Color::kCyan,
                                        &marker);
     } else {
-      PlanningVisual::SetScaleAndColor({0.4, 0, 0}, common::Color::kMagenta,
+      // PlanningVisual::SetScaleAndColor({0.4, 0, 0}, common::Color::kMagenta,
+      //                                  &marker);
+      PlanningVisual::SetScaleAndColor({0.4, 0, 0}, common::Color::kGreen,
                                        &marker);
     }
     auto se2 = reference_line.GetSE2(s);

@@ -67,21 +67,28 @@ void UncertaintyEstimator::EstimateObstacleUncertainty(
   double position_std = base_position_std_ + 
                        position_growth_rate_ * distance * distance_factor;
                        
-  // 考虑观测角度的影响
+  // 考虑观测角度的影响     
   position_std *= (1.0 + angle_factor);
   
   // 设置位置不确定性（考虑径向和切向差异）
+  // 径向标准差
   double radial_std = position_std;
+  // 切向标准差
   double tangential_std = position_std * 1.2;  // 切向不确定性略大
   
   // 构建旋转矩阵，将不确定性从极坐标转换到笛卡尔坐标
   double cos_theta = relative_pos.x() / distance;
   double sin_theta = relative_pos.y() / distance;
   
+  // R矩阵用于将向量从极坐标系旋转到笛卡尔坐标系
   Eigen::Matrix2d R;  // 旋转矩阵
   R << cos_theta, -sin_theta,
        sin_theta, cos_theta;
-       
+  
+  // D矩阵表示在极坐标系下的协方差:
+  // - 左上角是径向方差
+  // - 右下角是切向方差
+  // - 0表示径向和切向互不相关  
   Eigen::Matrix2d D;  // 对角矩阵（径向和切向方差）
   D << radial_std * radial_std, 0,
        0, tangential_std * tangential_std;

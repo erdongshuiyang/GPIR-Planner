@@ -97,6 +97,9 @@
         "mprealsupport": "cpp",
         "numericaldiff": "cpp",
         "specialfunctions": "cpp",
-        "splines": "cpp"
+        "splines": "cpp",
+        "matrixfunctions": "cpp",
+        "polynomials": "cpp",
+        "*.inc": "cpp"
     }
 }

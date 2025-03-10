@@ -89,6 +89,7 @@ void ControlUncertaintyModel::PredictUncertainty(
   Eigen::MatrixXd Fd = sde_params_.F * dt;
   
   // 计算离散时间噪声协方差
+  // 状态协方差矩阵的传播————描述了系统状态不确定性如何随时间演化
   *state_covariance = Ad * (*state_covariance) * Ad.transpose() +
                       Fd * sde_params_.Qc * Fd.transpose();
 
